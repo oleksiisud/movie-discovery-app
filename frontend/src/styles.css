@@ -1,1 +1,22 @@
 /* You can add global styles to this file, and also import other style files */
+:root {
+  --bg: #0a0a0f;
+  --surface: #13131a;
+  --border: #2a2a38;
+  --accent: #e8c97d;
+  --accent-dim: rgba(232, 201, 125, 0.15);
+  --text: #f0ede8;
+  --muted: #6b6880;
+  --danger: #e07070;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  background-color: #0a0a0f;
+}

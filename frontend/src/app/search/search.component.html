@@ -1,0 +1,64 @@
+<div class="page">
+
+  <header class="hero">
+    <h1 class="logo">CINEMIXER</h1>
+    <p class="tagline">Word Combinator Search</p>
+  </header>
+
+  <section class="input-area">
+    <div class="chips-wrapper">
+      <div class="chip" *ngFor="let chip of inputs; let i = index">
+        <span>{{ chip }}</span>
+        <button class="chip-remove" (click)="removeInput(i)">X</button>
+      </div>
+    </div>
+
+    <div class="input-row" *ngIf="inputs.length < 5">
+      <input
+        #wordInput
+        class="word-input"
+        type="text"
+        [placeholder]="inputs.length === 0 ? 'e.g. revenge, desert, solitude...' : 'add another word or phrase'"
+        [(ngModel)]="currentInput"
+        (keydown.enter)="addInput()"
+      />
+      <button class="add-btn" (click)="addInput()" [disabled]="!currentInput.trim()">+</button>
+    </div>
+
+    <p class="hint">{{ inputs.length }}/5 — need at least 2</p>
+
+    <button
+      class="search-btn"
+      (click)="search()"
+      [disabled]="inputs.length < 2 || loading"
+    >
+      <span *ngIf="!loading">Find Films</span>
+      <span *ngIf="loading" class="spinner"></span>
+    </button>
+  </section>
+
+  <p class="error" *ngIf="error">{{ error }}</p>
+
+  <section class="results" *ngIf="results.length > 0">
+    <h2 class="results-heading">Top Matches</h2>
+    <div class="card-grid">
+      <div class="card" *ngFor="let movie of results; let i = index" [style.animation-delay]="i * 60 + 'ms'">
+        <div class="card-rank">{{ i + 1 }}</div>
+        <div class="card-body">
+          <div class="card-header">
+            <h3 class="card-title">{{ movie.title }}</h3>
+            <span class="card-year">{{ movie.release_year }}</span>
+          </div>
+          <p class="card-overview">{{ movie.overview }}</p>
+          <div class="card-score">
+            <div class="score-bar-track">
+              <div class="score-bar-fill" [style.width]="(movie.similarity * 100) + '%'"></div>
+            </div>
+            <span class="score-label">{{ (movie.similarity * 100).toFixed(0) }}% match</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
