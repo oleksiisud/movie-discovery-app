@@ -26,18 +26,31 @@ PROGRESS_FILE = "injection_progress.txt"
 # Resuming Logic
 
 def get_last_completed_page():
+    """
+    Read the last completed page number from the progress file. If the file doesn't exist, return 0.
+    
+    :return: Last completed page number
+    """
     if not os.path.exists(PROGRESS_FILE):
         return 0
     with open(PROGRESS_FILE, "r") as f:
         return int(f.read().strip())
 
 def save_progress(page):
+    """
+    Save the last completed page number to the progress file.
+
+    :param page: Page number to save
+    """
     with open(PROGRESS_FILE, "w") as f:
         f.write(str(page))
 
-#Fetch existing movies to skip duplicates
-
 def fetch_existing_ids():
+    """
+    Fetch existing tmdb_ids from the Supabase database to avoid duplicates during injection. This function paginates through the movies table and collects all tmdb_ids into a set.
+
+    :return: Set of existing tmdb_ids
+    """
     print("Fetching existing tmdb_ids from Supabase...")
     existing = set()
 
@@ -65,9 +78,13 @@ def fetch_existing_ids():
     print(f"Found {len(existing)} existing movies.")
     return existing
 
-# TMDB Fetching
-
 def fetch_movies_page(page):
+    """
+    Fetch a single page of movies from TMDB API, sorted by vote count, and return the results. Each page contains 20 movies.
+
+    :param page: Page number to fetch
+    :return: List of movie dicts from the API response
+    """
     response = requests.get(
         TMDB_URL + "discover/movie",
         params={
@@ -80,6 +97,12 @@ def fetch_movies_page(page):
     return response.json().get("results", [])
 
 def fetch_keywords(tmdb_id):
+    """
+    Fetch keywords for a movie using TMDB API and return a list of keyword names.
+
+    :param tmdb_id: TMDB movie ID
+    :return: List of keyword names
+    """
     response = requests.get(
         TMDB_URL + f"movie/{tmdb_id}/keywords",
         params={"api_key": TMDB_API_KEY},
@@ -87,44 +110,49 @@ def fetch_keywords(tmdb_id):
     data = response.json()
     return [k["name"] for k in data.get("keywords", [])]
 
-# Build text for embedding
-
-def normalize_embedding(embedding):
-    """
-    Normalize embedding using L2 normalization (unit vector).
-    Matches the normalize_embeddings=True behavior from SentenceTransformer.
-    """
-    embedding_array = np.array(embedding, dtype=np.float32)
-    norm = np.linalg.norm(embedding_array)
-    if norm > 0:
-        embedding_array = embedding_array / norm
-    return embedding_array.tolist()
 
 def build_movie_text(title, keywords, overview):
+    """
+    Build a text representation of the movie by combining title, keywords, and overview.
+    
+    :param title: Movie title
+    :param keywords: List of keyword names
+    :param overview: Movie overview text
+    :return: Combined text string
+    """
     kw_string = ", ".join(keywords)
     return f"{kw_string}. {overview}"
 
-# Hugging Face embeddings
 
 def generate_embeddings(texts, retries=5, wait=20):
+    """
+    Generate embeddings using Hugging Face Inference API
+    
+    :param texts: str or list of str
+    :param retries: Number of retries for handling 503/504 errors
+    :param wait: Wait time in seconds between retries
+    :return: np.array of shape (n_texts, embedding_dim)
+    """
+    # Ensure texts is always a list
+    if isinstance(texts, str):
+        texts = [texts]
+    
     payload = {"inputs": texts}
 
     for attempt in range(retries):
         response = requests.post(HF_MODEL_URL, headers=headers, json=payload)
 
         if response.status_code == 200:
-            result = response.json()
-            # Handle different response formats from HF API
-            embeddings = []
-            if isinstance(result, list):
-                for item in result:
-                    if isinstance(item, (list, tuple)):
-                        embeddings.append(normalize_embedding(item))
-                    else:
-                        embeddings.append(normalize_embedding(result))
-                        break
-            else:
-                embeddings.append(normalize_embedding(result))
+            embeddings = response.json()
+            
+            # Ensure we have a list of lists (not a single embedding list)
+            if embeddings and not isinstance(embeddings[0], (list, tuple)):
+                embeddings = [embeddings]
+            
+            # Verify we got embeddings for all texts
+            if len(embeddings) != len(texts):
+                raise Exception(f"Embedding count mismatch: got {len(embeddings)} embeddings for {len(texts)} texts")
+            
             return embeddings
 
         if response.status_code in (503, 504):
@@ -135,9 +163,13 @@ def generate_embeddings(texts, retries=5, wait=20):
 
     raise Exception(f"Embedding API failed after {retries} retries.")
 
-# Main injection loop
-
 def run_injection(target_count=10000, batch_size=16):
+    """
+    Main function to run the movie injection process. It fetches movies from TMDB, generates embeddings, and inserts them into Supabase while keeping track of progress for resuming.
+
+    :param target_count: Total number of movies to inject
+    :param batch_size: Number of movies to process in each batch for embedding generation
+    """
     existing_ids = fetch_existing_ids()
     last_page = get_last_completed_page()
 
@@ -181,6 +213,7 @@ def run_injection(target_count=10000, batch_size=16):
                 "title": m["title"],
                 "release_year": release_year,
                 "overview": m["overview"],
+                "popularity": m["popularity"],
                 "keywords": keywords,
                 "text": build_movie_text(m["title"], keywords, m["overview"])
             })
@@ -192,13 +225,22 @@ def run_injection(target_count=10000, batch_size=16):
 
             embeddings = generate_embeddings(texts)
 
+            print(f"Generated {len(embeddings)} embeddings for batch of {len(batch)} movies")
+
             for movie, embedding in zip(batch, embeddings):
+                # Verify embedding is valid
+                if not embedding or not isinstance(embedding, (list, tuple)):
+                    raise Exception(f"Invalid embedding for {movie['title']}")
+                
+                if len(embedding) != 384:
+                    raise Exception(f"Embedding dimension mismatch for {movie['title']}: expected 384, got {len(embedding)}")
 
                 movie_insert = supabase.table("movies").insert({
                     "tmdb_id": movie["tmdb_id"],
                     "title": movie["title"],
                     "release_year": movie["release_year"],
                     "overview": movie["overview"],
+                    "popularity": movie["popularity"],
                     "embedding": embedding
                 }).execute()
 
@@ -214,7 +256,7 @@ def run_injection(target_count=10000, batch_size=16):
                 existing_ids.add(movie["tmdb_id"])
                 total_inserted += 1
 
-                print(f"Inserted: {movie['title']} ({movie['release_year']}) — Total: {total_inserted}")
+                print(f"Inserted: {movie['title']} ({movie['release_year']}) [embedding dim: {len(embedding)}] — Total: {total_inserted}")
 
                 if total_inserted >= target_count:
                     break
@@ -226,4 +268,4 @@ def run_injection(target_count=10000, batch_size=16):
     print("\nInjection complete.")
 
 if __name__ == "__main__":
-    run_injection(target_count=200)
+    run_injection(target_count=1000)
