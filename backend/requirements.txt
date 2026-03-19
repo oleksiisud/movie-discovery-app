@@ -4,3 +4,9 @@ django-cors-headers
 requests
 supabase
 python-dotenv
+redis
+redis[hiredis]
+django-redis
+gunicorn
+regex
+numpy
