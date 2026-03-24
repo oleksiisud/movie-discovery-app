@@ -5,43 +5,43 @@ import numpy as np
 
 HF_MODEL_URL = "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction"
 
-def normalize_embedding(embedding):
-    """
-    Normalize embedding using L2 normalization (unit vector).
-    Matches the normalize_embeddings=True behavior from SentenceTransformer.
-    """
-    embedding_array = np.array(embedding, dtype=np.float32)
-    norm = np.linalg.norm(embedding_array)
-    if norm > 0:
-        embedding_array = embedding_array / norm
-    return embedding_array.tolist()
-
 def get_embedding(text, retries=5, wait=20):
     """
-    Sends a single string to the HuggingFace inference API and returns
-    the embedding vector as a plain Python list (normalized).
-    Retries on 503/504 to handle cold-start model loading.
+    Generate embeddings using Hugging Face Inference API
+    
+    :param texts: str or list of str
+    :param retries: Number of retries for handling 503/504 errors
+    :param wait: Wait time in seconds between retries
+    :return: np.array of shape (n_texts, embedding_dim)
     """
     headers = {"Authorization": f"Bearer {os.getenv('HF_TOKEN')}"}
-    structured = f"{text}."
-    payload = {"inputs": structured}
+    payload = {"inputs": [text]}
 
     for attempt in range(retries):
         response = requests.post(HF_MODEL_URL, headers=headers, json=payload)
 
         if response.status_code == 200:
-            result = response.json()
-            # Handle different response formats from HF API
-            if isinstance(result, list) and len(result) > 0:
-                embedding = result[0] if isinstance(result[0], (list, tuple)) else result
+            embeddings = response.json()
+            
+            # Ensure we have a list of lists (not a single embedding list)
+            if embeddings and not isinstance(embeddings[0], (list, tuple)):
+                embedding = [embeddings]
             else:
-                embedding = result
-            return normalize_embedding(embedding)
+                embedding = embeddings[0] if embeddings else None
+            
+            if not embedding:
+                raise Exception("No embedding data returned from API")
+            
+            # Verify embedding dimension
+            if len(embedding) != 384:
+                raise Exception(f"Embedding dimension mismatch: expected 384, got {len(embedding)}")
+            
+            return embedding
 
         if response.status_code in (503, 504):
-            print(f"HF model unavailable (attempt {attempt + 1}/{retries}), retrying in {wait}s...")
+            print(f"Model unavailable (attempt {attempt + 1}/{retries}), retrying in {wait}s...")
             time.sleep(wait)
         else:
-            raise Exception(f"HF embedding error {response.status_code}: {response.text}")
+            raise Exception(f"Embedding API error {response.status_code}: {response.text}")
 
-    raise Exception("HF embedding API failed after max retries.")
+    raise Exception(f"Embedding API failed after {retries} retries.")
