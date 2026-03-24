@@ -1,3 +1,11 @@
+# Environment variables
 .env
+
+# Python virtual environment
 .venv
+
+# Jupyter notebooks
 /backend/*.ipynb
+
+# Docker local overrides
+docker-compose.override.yml

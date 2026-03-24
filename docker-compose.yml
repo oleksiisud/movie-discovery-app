@@ -1,0 +1,84 @@
+#  docker-compose.yml — Movie Discovery App
+#
+#  Services:
+#    redis    — Cache layer (Redis 7)
+#    backend  — Django REST API (Gunicorn, port 8000)
+#    frontend — Angular SSR app (Node/Express, port 4200)
+#
+#  Usage:
+#    docker compose up --build        # first run or after code changes
+#    docker compose up                # subsequent runs (uses cached images)
+#    docker compose down              # stop and remove containers
+#    docker compose down -v           # also remove volumes (wipes SQLite data)
+
+services:
+
+  # Redis
+  # Official Redis 7 image on Alpine Linux (tiny footprint).
+  # The backend reads REDIS_URL=redis://redis:6379/0, where "redis"
+  # is the service name Docker resolves to this container's IP.
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Persist data across container restarts using a named volume
+    volumes:
+      - redis_data:/data
+    # Healthcheck lets dependent services wait until Redis is truly ready
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Backend (Django)
+  # Built from backend/Dockerfile.
+  # On start-up it runs `manage.py migrate` then launches gunicorn.
+  backend:
+    build:
+      context: ./backend # Docker looks for backend/Dockerfile here
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000" # host:container — access at http://localhost:8000
+    # Load all variables from the root .env file into the container.
+    # REDIS_URL should point to redis://redis:6379/0 in .env (or it defaults
+    # to that in settings.py already).
+    env_file:
+      - .env
+    # Override just the Redis URL so it uses the Docker service name
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DATA_DIR=/app/data
+    # SQLite data directory lives on a named volume so it survives container restarts.
+    # We mount to a DIRECTORY (/app/data), not a file — Docker always creates a
+    # directory when initialising a named volume, so mounting to a file path would
+    # turn db.sqlite3 into a directory and break SQLite.
+    volumes:
+      - sqlite_data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy # wait until Redis passes its healthcheck
+
+  # Frontend (Angular SSR)
+  # Built from frontend/Dockerfile (multi-stage Node build).
+  # The compiled SSR server runs on port 4200.
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "4200:4200" # access at http://localhost:4200
+    environment:
+      # Tell the Angular SSR server where the backend API lives.
+      # Inside Docker, containers talk to each other by service name.
+      - API_URL=http://backend:8000
+    depends_on:
+      - backend
+
+# Named Volumes
+# Docker manages these; they persist beyond `docker compose down`.
+# Use `docker compose down -v` to also remove them.
+volumes:
+  redis_data:
+  sqlite_data:

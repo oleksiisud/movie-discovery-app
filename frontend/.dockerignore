@@ -1,0 +1,13 @@
+# Dependencies — installed fresh inside the image via npm ci
+node_modules/
+
+# Build output — produced inside the image
+dist/
+
+# Angular CLI cache
+.angular/
+
+# Editor / OS noise
+.git/
+.vscode/
+.DS_Store
