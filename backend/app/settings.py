@@ -46,12 +46,12 @@ MIDDLEWARE = [
 
 CORS_ALLOWED_ORIGINS = os.getenv(
     "CORS_ALLOWED_ORIGINS",
-    "http://localhost:4200,http://frontend:4200"
+    "http://localhost:4200,http://frontend:4200,https://cinemixer.appwrite.network,https://cinemixer.appwrite.network/"
 ).split(",")
 
 CSRF_TRUSTED_ORIGINS = os.getenv(
     "CSRF_TRUSTED_ORIGINS",
-    "http://localhost:4200,http://frontend:4200"
+    "http://localhost:4200,http://frontend:4200,https://cinemixer.appwrite.network,https://cinemixer.appwrite.network/"
 ).split(",")
 
 REST_FRAMEWORK = {

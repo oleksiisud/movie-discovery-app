@@ -3,8 +3,8 @@
   "version": "0.0.0",
   "scripts": {
     "ng": "ng",
-    "env": "ts-node set-env.ts",
-    "start": "ng serve",
+    "env": "tsx set-env.ts",
+    "start": "npm run env && ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
@@ -36,7 +36,8 @@
     "appwrite": "^22.4.1",
     "express": "^5.1.0",
     "rxjs": "~7.8.0",
-    "tslib": "^2.3.0"
+    "tslib": "^2.3.0",
+    "tsx": "^4.21.0"
   },
   "devDependencies": {
     "@angular-builders/custom-webpack": "^21.0.3",
@@ -45,7 +46,7 @@
     "@angular/compiler-cli": "^21.1.0",
     "@types/express": "^5.0.1",
     "@types/node": "^20.19.33",
-    "dotenv": "^17.3.1",
+    "dotenv": "^17.4.2",
     "dotenv-webpack": "^8.1.1",
     "jsdom": "^27.1.0",
     "typescript": "~5.9.2",
