@@ -10,5 +10,5 @@ export const environment = {
 };
 `;
 
-fs.writeFileSync('./src/environments/environment.development.ts', envConfig);
+fs.writeFileSync('./src/environments/environment.ts', envConfig);
 console.log('Environment file generated.');

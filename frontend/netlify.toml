@@ -1,8 +1,9 @@
 [build]
-command = "npm run build"
-publish = "dist/movie-discovery-app"
+    base = "frontend"
+    command = "npm run build"
+    publish = "dist/movie-discovery-app"
 
 [[redirects]]
-from = "/*"
-to = "/index.html"
-status = 200
+    from = "/*"
+    to = "/index.html"
+    status = 200

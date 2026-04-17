@@ -5,7 +5,7 @@
     "ng": "ng",
     "env": "tsx set-env.ts",
     "start": "npm run env && ng serve",
-    "build": "ng build",
+    "build": "npm run env && ng build --configuration production",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "serve:ssr:movie-discovery-app": "node dist/movie-discovery-app/server/server.mjs"
