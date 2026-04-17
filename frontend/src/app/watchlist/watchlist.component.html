@@ -1,0 +1,77 @@
+<div class="page">
+
+  <header class="page-header">
+    <h1 class="page-title">Your Watchlist</h1>
+    <p class="page-subtitle">Films you've saved and watched</p>
+  </header>
+
+  <!-- Tabs -->
+  <div class="tab-bar" role="tablist">
+    <button class="tab-btn" role="tab" [class.active]="activeTab === 'saved'" (click)="activeTab = 'saved'"
+      id="watchlist-tab-saved" [attr.aria-selected]="activeTab === 'saved'">
+      Saved
+      <span class="tab-count">{{ savedEntries.length }}</span>
+    </button>
+    <button class="tab-btn" role="tab" [class.active]="activeTab === 'watched'" (click)="activeTab = 'watched'"
+      id="watchlist-tab-watched" [attr.aria-selected]="activeTab === 'watched'">
+      Watched
+      <span class="tab-count">{{ watchedEntries.length }}</span>
+    </button>
+  </div>
+
+  <!-- Loading skeleton -->
+  @if (loading) {
+  <div class="skeleton-list">
+    @for (i of [1, 2, 3]; track i) {
+    <div class="skeleton-card"></div>
+    }
+  </div>
+
+  <!-- Error -->
+  } @else if (error) {
+  <p class="error-msg">{{ error }}</p>
+
+  <!-- Empty state -->
+  } @else if (activeEntries.length === 0) {
+  <div class="empty-state">
+    <span class="material-symbols-rounded empty-icon">
+      {{ activeTab === 'saved' ? 'bookmark' : 'movie' }}
+    </span>
+    <p class="empty-title">
+      {{ activeTab === 'saved' ? 'No saved films yet' : 'Nothing watched yet' }}
+    </p>
+    <p class="empty-subtitle">
+      {{ activeTab === 'saved'
+      ? 'Discover films and save them here to watch later.'
+      : 'Mark films as watched to track what you\'ve seen.' }}
+    </p>
+    <a class="discover-btn" [routerLink]="['/']" id="btn-discover-from-empty">Discover Films</a>
+  </div>
+
+  <!-- Card list -->
+  } @else {
+  <div class="card-list">
+    @for (entry of activeEntries; track entry.id; let i = $index) {
+    <div class="card" [style.animation-delay]="i * 60 + 'ms'">
+      <div class="card-rank">{{ i + 1 }}</div>
+      <div class="card-body">
+        <div class="card-header">
+          <h3 class="card-title">{{ entry.movies?.title ?? 'Unknown Title' }}</h3>
+          <span class="card-year">{{ entry.movies?.release_year }}</span>
+        </div>
+        <p class="card-overview">{{ entry.movies?.overview }}</p>
+        <div class="card-actions">
+          <button class="action-btn action-btn--toggle" (click)="toggleStatus(entry)" [id]="'btn-toggle-' + entry.id">
+            {{ activeTab === 'saved' ? 'Mark Watched' : 'Move to Saved' }}
+          </button>
+          <button class="action-btn action-btn--remove" (click)="remove(entry)" [id]="'btn-remove-' + entry.id">
+            Remove
+          </button>
+        </div>
+      </div>
+    </div>
+    }
+  </div>
+  }
+
+</div>
