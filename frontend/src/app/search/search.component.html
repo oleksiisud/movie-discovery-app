@@ -7,23 +7,27 @@
 
   <section class="input-area">
     <div class="chips-wrapper">
-      <div class="chip" *ngFor="let chip of inputs; let i = index">
-        <span>{{ chip }}</span>
-        <button class="chip-remove" (click)="removeInput(i)">X</button>
-      </div>
+      @for (chip of inputs; track chip; let i = $index) {
+        <div class="chip">
+          <span>{{ chip }}</span>
+          <button class="chip-remove" (click)="removeInput(i)">X</button>
+        </div>
+      }
     </div>
 
-    <div class="input-row" *ngIf="inputs.length < 5">
-      <input
-        #wordInput
-        class="word-input"
-        type="text"
-        [placeholder]="inputs.length === 0 ? 'e.g. revenge, desert, solitude...' : 'add another word or phrase'"
-        [(ngModel)]="currentInput"
-        (keydown.enter)="addInput()"
-      />
-      <button class="add-btn" (click)="addInput()" [disabled]="!currentInput.trim()">+</button>
-    </div>
+    @if (inputs.length < 5) {
+      <div class="input-row">
+        <input
+          #wordInput
+          class="word-input"
+          type="text"
+          [placeholder]="inputs.length === 0 ? 'e.g. revenge, desert, solitude...' : 'add another word or phrase'"
+          [(ngModel)]="currentInput"
+          (keydown.enter)="addInput()"
+        />
+        <button class="add-btn" (click)="addInput()" [disabled]="!currentInput.trim()">+</button>
+      </div>
+    }
 
     <p class="hint">{{ inputs.length }}/5 — need at least 2</p>
 
@@ -32,33 +36,60 @@
       (click)="search()"
       [disabled]="inputs.length < 2 || loading"
     >
-      <span *ngIf="!loading">Find Films</span>
-      <span *ngIf="loading" class="spinner"></span>
+      @if (loading) {
+        <span class="spinner"></span>
+      } @else {
+        Find Films
+      }
     </button>
   </section>
 
-  <p class="error" *ngIf="error">{{ error }}</p>
+  @if (error) {
+    <p class="error">{{ error }}</p>
+  }
 
-  <section class="results" *ngIf="results.length > 0">
-    <h2 class="results-heading">Top Matches</h2>
-    <div class="card-grid">
-      <div class="card" *ngFor="let movie of results; let i = index" [style.animation-delay]="i * 60 + 'ms'">
-        <div class="card-rank">{{ i + 1 }}</div>
-        <div class="card-body">
-          <div class="card-header">
-            <h3 class="card-title">{{ movie.title }}</h3>
-            <span class="card-year">{{ movie.release_year }}</span>
-          </div>
-          <p class="card-overview">{{ movie.overview }}</p>
-          <div class="card-score">
-            <div class="score-bar-track">
-              <div class="score-bar-fill" [style.width]="(movie.similarity * 100) + '%'"></div>
+  @if (results.length > 0) {
+    <section class="results">
+      <h2 class="results-heading">Top Matches</h2>
+      <div class="card-grid">
+        @for (movie of results; track movie.id; let i = $index) {
+          <div class="card" [style.animation-delay]="i * 60 + 'ms'">
+            <div class="card-rank">{{ i + 1 }}</div>
+            <div class="card-body">
+              <div class="card-header">
+                <h3 class="card-title">{{ movie.title }}</h3>
+                <span class="card-year">{{ movie.release_year }}</span>
+              </div>
+              <p class="card-overview">{{ movie.overview }}</p>
+              <div class="card-score">
+                <div class="score-bar-track">
+                  <div class="score-bar-fill" [style.width]="(movie.similarity * 100) + '%'"></div>
+                </div>
+                <span class="score-label">{{ (movie.similarity * 100).toFixed(0) }}% match</span>
+              </div>
+              <div class="card-actions">
+                <button
+                  class="action-btn action-btn--save"
+                  [class.active]="watchlistMap[movie.id] === 'saved'"
+                  (click)="toggleWatchlist(movie, 'saved')"
+                  [id]="'btn-save-' + movie.id"
+                >
+                  {{ watchlistMap[movie.id] === 'saved' ? 'Saved' : 'Add to Watchlist' }}
+                </button>
+                <button
+                  class="action-btn action-btn--watched"
+                  [class.active]="watchlistMap[movie.id] === 'watched'"
+                  (click)="toggleWatchlist(movie, 'watched')"
+                  [id]="'btn-watched-' + movie.id"
+                >
+                  {{ watchlistMap[movie.id] === 'watched' ? 'Watched' : 'Mark Watched' }}
+                </button>
+              </div>
             </div>
-            <span class="score-label">{{ (movie.similarity * 100).toFixed(0) }}% match</span>
           </div>
-        </div>
+        }
       </div>
-    </div>
-  </section>
+    </section>
+  }
 
 </div>

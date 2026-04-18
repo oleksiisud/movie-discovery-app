@@ -70,8 +70,15 @@
 }
 
 @keyframes chipIn {
-  from { opacity: 0; transform: scale(0.85); }
-  to   { opacity: 1; transform: scale(1); }
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .chip-remove {
@@ -184,7 +191,9 @@
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Error */
@@ -232,8 +241,15 @@
 }
 
 @keyframes fadeUp {
-  from { opacity: 0; transform: translateY(12px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .card-rank {
@@ -310,4 +326,49 @@
   color: var(--accent);
   font-weight: 500;
   white-space: nowrap;
+}
+
+/* Card action buttons */
+.card-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.action-btn {
+  padding: 0.35rem 0.9rem;
+  border-radius: 8px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid;
+  white-space: nowrap;
+}
+
+/* Watchlist / Save */
+.action-btn--save {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: transparent;
+}
+
+.action-btn--save:hover,
+.action-btn--save.active {
+  background: var(--accent);
+  color: #0a0a0f;
+}
+
+/* Watched */
+.action-btn--watched {
+  border-color: var(--muted);
+  color: var(--muted);
+  background: transparent;
+}
+
+.action-btn--watched:hover,
+.action-btn--watched.active {
+  background: var(--muted);
+  color: var(--bg);
 }
