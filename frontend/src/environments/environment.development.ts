@@ -1,7 +1,5 @@
 
 export const environment = {
     production: false,
-    apiUrl: '',
-    supabaseUrl: '',
-    supabaseAnonKey: '',
+    apiUrl: 'http://localhost:8000'
 };

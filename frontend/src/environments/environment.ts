@@ -1,6 +1,4 @@
 export const environment = {
-  production: false,
-  apiUrl: '',
-  supabaseUrl: '',
-  supabaseAnonKey: '',
+  production: true,
+  apiUrl: 'https://cinemixer-5b9aed111f78.herokuapp.com'
 };

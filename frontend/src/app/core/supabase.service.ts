@@ -1,8 +1,8 @@
 import { Injectable, PLATFORM_ID, inject } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { createClient, SupabaseClient, Session, User } from '@supabase/supabase-js';
-import { environment } from '../../environments/environment';
 import { BehaviorSubject, filter, firstValueFrom } from 'rxjs';
+import { ConfigService } from './services/config.service';
 
 // enum for watch status
 export type WatchStatus = 'saved' | 'watched';
@@ -26,6 +26,7 @@ export interface WatchlistEntry {
 @Injectable({ providedIn: 'root' })
 export class SupabaseService {
   private readonly platformId = inject(PLATFORM_ID);
+  private readonly configService = inject(ConfigService);
   private client!: SupabaseClient;
 
   private _session$ = new BehaviorSubject<Session | null | undefined>(undefined);
@@ -38,22 +39,38 @@ export class SupabaseService {
   }
 
   constructor() {
-    if (!isPlatformBrowser(this.platformId) || !environment.supabaseUrl || !environment.supabaseAnonKey) {
+    this.sessionReady = this.initializeClient();
+  }
+
+  private async initializeClient(): Promise<Session | null> {
+    if (!isPlatformBrowser(this.platformId)) {
       this._session$.next(null);
-      this.sessionReady = Promise.resolve(null);
-      return;
+      return null;
     }
 
-    this.client = createClient(environment.supabaseUrl, environment.supabaseAnonKey);
+    try {
+      const config = this.configService.getSupabaseConfig();
+      if (!config || !config.supabaseUrl || !config.supabaseAnonKey) {
+        console.error('Supabase config not loaded');
+        this._session$.next(null);
+        return null;
+      }
 
-    this.sessionReady = this.client.auth.getSession().then(({ data }) => {
+      this.client = createClient(config.supabaseUrl, config.supabaseAnonKey);
+
+      const { data } = await this.client.auth.getSession();
       this._session$.next(data.session);
-      return data.session;
-    });
 
-    this.client.auth.onAuthStateChange((_event, session) => {
-      this._session$.next(session);
-    });
+      this.client.auth.onAuthStateChange((_event, session) => {
+        this._session$.next(session);
+      });
+
+      return data.session;
+    } catch (error) {
+      console.error('Failed to initialize Supabase:', error);
+      this._session$.next(null);
+      return null;
+    }
   }
 
   // Auth
@@ -76,10 +93,24 @@ export class SupabaseService {
     if (!this.client || !this.currentUser) return [];
     const { data, error } = await this.client
       .from('watchlist')
-      .select('id, movie_id, status, created_at, movies(id, title, overview, release_year, tmdb_id)')
+      .select(`
+        id,
+        movie_id,
+        status,
+        created_at,
+        movies!watchlist_movie_id_fkey (
+          id,
+          title,
+          overview,
+          release_year,
+          tmdb_id
+        )
+      `)
       .eq('user_id', this.currentUser.id)
       .order('created_at', { ascending: false });
     if (error) throw error;
+
+    console.log('Raw watchlist data:', data);
 
     const entries = (data ?? []).map((row: any) => ({
       ...row,
