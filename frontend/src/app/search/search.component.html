@@ -1,7 +1,9 @@
-<div class="canvas-page">
+<div class="page">
 
-  <!-- Animated particle background -->
-  <canvas #bgCanvas class="bg-canvas"></canvas>
+  <header class="hero">
+    <h1 class="logo">CINEMIXER</h1>
+    <p class="tagline">Word Combinator Search</p>
+  </header>
 
   <section class="input-area">
     <div class="chips-wrapper">
@@ -27,8 +29,7 @@
       </div>
     }
 
-  <!-- Main canvas workspace -->
-  <div class="canvas-area" #canvasArea>
+    <p class="hint">{{ inputs.length }}/5 — need at least 2</p>
 
     <button
       class="search-btn"
