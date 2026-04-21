@@ -14,33 +14,14 @@ import { isPlatformBrowser } from '@angular/common';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
+import { Router } from '@angular/router';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { environment } from '../../environments/environment';
+import { SupabaseService, WatchStatus } from '../core/supabase.service';
 
-// Models
-
-interface WordCard {
-  id: string;
-  label: string;
-  emoji: string;
-  x: number;
-  y: number;
-  clusterId: string | null;
-  isDragging: boolean;
-  width: number;
-  height: number;
-}
-
-interface Cluster {
-  id: string;
-  cardIds: string[];
-  x: number;
-  y: number;
-  loading: boolean;
-  error: string;
-  result: MovieResult | null;
-}
-
-interface MovieResult {
+interface Movie {
+  id: number;
+  tmdb_id: number;
   title: string;
   overview: string;
   release_year: number;
@@ -77,159 +58,43 @@ export class SearchComponent implements OnInit, AfterViewInit, OnDestroy {
   @ViewChild('bgCanvas') bgCanvasRef!: ElementRef<HTMLCanvasElement>;
   @ViewChild('canvasArea') canvasAreaRef!: ElementRef<HTMLDivElement>;
 
-  private http = inject(HttpClient);
-  private cdr = inject(ChangeDetectorRef);
-  private zone = inject(NgZone);
-  private platformId = inject(PLATFORM_ID);
+  private readonly http = inject(HttpClient);
+  private readonly cdr = inject(ChangeDetectorRef);
+  private readonly supabase = inject(SupabaseService);
+  private readonly router = inject(Router);
 
   // State
   currentInput = '';
-  cards: WordCard[] = [];
-  clusters: Cluster[] = [];
-  history: string[] = [];
+  results: Movie[] = [];
+  loading = false;
+  error = '';
+  watchlistMap: Record<number, WatchStatus> = {};
 
-  historyOpen = false;
-  showHistoryHint = true;
-
-  private dragCard: WordCard | null = null;
-  private dragOffsetX = 0;
-  private dragOffsetY = 0;
-  private mouseX = 0;
-  private mouseY = 0;
-
-  // Particle bg
-  private dots: DotParticle[] = [];
-  private animFrame = 0;
-  private ctx: CanvasRenderingContext2D | null = null;
-
-  // Lifecycle
-
-  ngOnInit(): void { }
-
-  ngAfterViewInit(): void {
-    if (!isPlatformBrowser(this.platformId)) return;
-    this.setupCanvas();
-    this.zone.runOutsideAngular(() => this.animateCanvas());
-    this.bindGlobalMouseMove();
-  }
-
-  ngOnDestroy(): void {
-    if (!isPlatformBrowser(this.platformId)) return;
-    if (this.animFrame) cancelAnimationFrame(this.animFrame);
-  }
-
-  // Particle Canvas
-
-  private setupCanvas(): void {
-    const canvas = this.bgCanvasRef?.nativeElement;
-    if (!canvas) return;
-    this.ctx = canvas.getContext('2d');
-    this.resizeCanvas();
-    this.spawnDots();
-    window.addEventListener('resize', () => this.resizeCanvas());
-  }
-
-  private resizeCanvas(): void {
-    const canvas = this.bgCanvasRef?.nativeElement;
-    if (!canvas) return;
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    this.spawnDots();
-  }
-
-  private spawnDots(): void {
-    const canvas = this.bgCanvasRef?.nativeElement;
-    if (!canvas) return;
-    const count = Math.floor((canvas.width * canvas.height) / 8000);
-    this.dots = Array.from({ length: count }, () => {
-      const x = Math.random() * canvas.width;
-      const y = Math.random() * canvas.height;
-      return {
-        x, y, baseX: x, baseY: y,
-        radius: Math.random() * 1.5 + 0.5,
-        opacity: Math.random() * 0.25 + 0.05,
-        speed: Math.random() * 0.3 + 0.1,
-      };
+  constructor() {
+    // Reload watchlist map whenever auth state changes
+    this.supabase.session$.pipe(takeUntilDestroyed()).subscribe(session => {
+      if (session) {
+        this.loadWatchlistMap();
+      } else {
+        this.watchlistMap = {};
+        this.cdr.markForCheck();
+      }
     });
   }
 
-  private animateCanvas(): void {
-    const canvas = this.bgCanvasRef?.nativeElement;
-    if (!canvas || !this.ctx) return;
-
-    this.ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    for (const dot of this.dots) {
-      const dx = this.mouseX - dot.baseX;
-      const dy = this.mouseY - dot.baseY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const maxDist = 180;
-      const force = Math.max(0, (maxDist - dist) / maxDist);
-
-      dot.x += (dot.baseX + dx * force * 0.06 - dot.x) * dot.speed * 0.12;
-      dot.y += (dot.baseY + dy * force * 0.06 - dot.y) * dot.speed * 0.12;
-
-      this.ctx.beginPath();
-      this.ctx.arc(dot.x, dot.y, dot.radius, 0, Math.PI * 2);
-      this.ctx.fillStyle = `rgba(232,201,125,${dot.opacity})`;
-      this.ctx.fill();
+  private async loadWatchlistMap(): Promise<void> {
+    try {
+      this.watchlistMap = await this.supabase.getWatchlistMap();
+      this.cdr.markForCheck();
+    } catch (err) {
+      console.error('Failed to load watchlist map:', err);
     }
-
-    this.animFrame = requestAnimationFrame(() => this.animateCanvas());
   }
 
-  private bindGlobalMouseMove(): void {
-    this.zone.runOutsideAngular(() => {
-      window.addEventListener('mousemove', (e) => {
-        this.mouseX = e.clientX;
-        this.mouseY = e.clientY;
-        if (this.dragCard) {
-          this.zone.run(() => {
-            this.dragCard!.x = e.clientX - this.dragOffsetX;
-            this.dragCard!.y = e.clientY - this.dragOffsetY;
-          });
-        }
-      });
-      window.addEventListener('mouseup', () => {
-        if (this.dragCard) {
-          this.zone.run(() => this.onGlobalMouseUp());
-        }
-      });
-    });
-  }
-
-  // Add Word
-
-  addWord(): void {
-    // Always read from the native element — bypasses any ngModel/hydration issue
-    const inputEl = this.wordInputRef?.nativeElement;
-    const label = (inputEl?.value ?? this.currentInput).trim();
-    if (!label) return;
-
-    const area = this.canvasAreaRef?.nativeElement;
-    const areaW = Math.max(area?.clientWidth ?? window.innerWidth, 400);
-    const areaH = Math.max(area?.clientHeight ?? window.innerHeight - 200, 300);
-
-    const x = 80 + Math.random() * Math.max(areaW - 280, 100);
-    const y = 60 + Math.random() * Math.max(areaH - 160, 100);
-
-    const card: WordCard = {
-      id: 'w_' + Date.now() + '_' + Math.random().toString(36).slice(2),
-      label,
-      emoji: EMOJIS[Math.floor(Math.random() * EMOJIS.length)],
-      x, y,
-      clusterId: null,
-      isDragging: false,
-      width: 160,
-      height: 62,
-    };
-
-    if (!this.history.includes(label)) {
-      this.history = [label, ...this.history];
-    }
-
-    // Clear both the native element and the model
-    if (inputEl) inputEl.value = '';
+  addInput(): void {
+    const trimmed = this.currentInput.trim();
+    if (!trimmed || this.inputs.length >= 5) return;
+    this.inputs.push(trimmed);
     this.currentInput = '';
     this.cards = [...this.cards, card];
     this.cdr.detectChanges(); // Force immediate render
@@ -419,27 +284,37 @@ export class SearchComponent implements OnInit, AfterViewInit, OnDestroy {
       .post<{ results: MovieResult[] }>(`${environment.apiUrl}/api/search/`, { inputs })
       .subscribe({
         next: (res) => {
-          cluster.loading = false;
-          cluster.result = res.results?.[0] ?? null;
-          this.cdr.detectChanges();
+          this.results = res.results;
+          this.loading = false;
+          this.cdr.markForCheck();
         },
         error: (err) => {
-          cluster.loading = false;
-          cluster.error = err?.error?.error || 'Something went wrong.';
-          this.cdr.detectChanges();
+          this.error = err?.error?.error || 'Something went wrong. Please try again.';
+          this.loading = false;
         },
       });
   }
 
-  dismissResult(cluster: Cluster): void {
-    cluster.result = null;
-    cluster.error = '';
-  }
+  async toggleWatchlist(movie: Movie, status: WatchStatus): Promise<void> {
+    if (!this.supabase.currentUser) {
+      this.router.navigate(['/account']);
+      return;
+    }
 
-  // History Drawer
-
-  toggleHistory(): void {
-    this.historyOpen = !this.historyOpen;
-    this.showHistoryHint = false;
+    try {
+      if (this.watchlistMap[movie.id] === status) {
+        // Clicking the active status removes it
+        await this.supabase.removeFromWatchlist(movie.id);
+        const updated = { ...this.watchlistMap };
+        delete updated[movie.id];
+        this.watchlistMap = updated;
+      } else {
+        await this.supabase.upsertWatchlist(movie.id, status);
+        this.watchlistMap = { ...this.watchlistMap, [movie.id]: status };
+      }
+      this.cdr.markForCheck();
+    } catch (err) {
+      console.error('Watchlist error:', err);
+    }
   }
 }

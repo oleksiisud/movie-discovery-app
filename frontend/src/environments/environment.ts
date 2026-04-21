@@ -1,4 +1,4 @@
 export const environment = {
-    production: false,
-    apiUrl: '',
+  production: true,
+  apiUrl: 'https://cinemixer-5b9aed111f78.herokuapp.com'
 };

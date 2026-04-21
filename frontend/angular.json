@@ -27,16 +27,7 @@
             "styles": [
               "src/styles.css"
             ],
-            "server": "src/main.server.ts",
-            "outputMode": "server",
-            "ssr": {
-              "entry": "src/server.ts"
-            },
-            "optimization": {
-              "fonts": {
-                "inline": false
-              }
-            }
+            "outputPath": "dist/movie-discovery-app"
           },
           "configurations": {
             "production": {

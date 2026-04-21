@@ -3,142 +3,92 @@
   <!-- Animated particle background -->
   <canvas #bgCanvas class="bg-canvas"></canvas>
 
-  <!-- Top Nav Bar -->
-  <nav class="top-nav">
-    <span class="nav-logo">CineMixer</span>
-    <div class="nav-links">
-      <a class="nav-link active" href="#">Discover</a>
-      <a class="nav-link" href="#">Watchlist</a>
+  <section class="input-area">
+    <div class="chips-wrapper">
+      @for (chip of inputs; track chip; let i = $index) {
+        <div class="chip">
+          <span>{{ chip }}</span>
+          <button class="chip-remove" (click)="removeInput(i)">X</button>
+        </div>
+      }
     </div>
-    <div class="nav-actions">
-      <button class="nav-btn" title="Settings" aria-label="Settings">
-        <span class="material-symbols-rounded">
-          settings
-        </span>
-      </button>
-      <button class="nav-btn" title="Account" aria-label="Account">
-        <span class="material-symbols-rounded">
-          account_circle
-        </span>
-      </button>
-    </div>
-  </nav>
+
+    @if (inputs.length < 5) {
+      <div class="input-row">
+        <input
+          #wordInput
+          class="word-input"
+          type="text"
+          [placeholder]="inputs.length === 0 ? 'e.g. revenge, desert, solitude...' : 'add another word or phrase'"
+          [(ngModel)]="currentInput"
+          (keydown.enter)="addInput()"
+        />
+        <button class="add-btn" (click)="addInput()" [disabled]="!currentInput.trim()">+</button>
+      </div>
+    }
 
   <!-- Main canvas workspace -->
   <div class="canvas-area" #canvasArea>
 
-    <!-- Lone cards (not in a cluster) -->
-    @for (card of loneCards(); track card.id) {
-    <div class="word-card" [class.is-dragging]="card.isDragging" [style.left.px]="card.x" [style.top.px]="card.y"
-      (mousedown)="startDrag($event, card)">
-      <span class="card-emoji">{{ card.emoji }}</span>
-      <span class="card-label">{{ card.label }}</span>
-    </div>
-    }
-
-    <!-- Clusters -->
-    @for (cluster of clusters; track cluster.id) {
-    <div class="cluster-wrapper" [style.left.px]="cluster.x" [style.top.px]="cluster.y">
-      <!-- Cards in cluster (staggered) -->
-      @for (card of cardsInCluster(cluster); track card.id; let i = $index) {
-      <div class="word-card clustered" [class.is-dragging]="card.isDragging" [style.margin-top.px]="i * 8"
-        (mousedown)="startDrag($event, card)">
-        <span class="card-emoji">{{ card.emoji }}</span>
-        <span class="card-label">{{ card.label }}</span>
-      </div>
+    <button
+      class="search-btn"
+      (click)="search()"
+      [disabled]="inputs.length < 2 || loading"
+    >
+      @if (loading) {
+        <span class="spinner"></span>
+      } @else {
+        Find Films
       }
+    </button>
+  </section>
 
-      <!-- Generate button -->
-      @if (cardsInCluster(cluster).length >= 2) {
-      <div class="cluster-actions">
-        @if (!cluster.loading && !cluster.result) {
-        <button class="generate-btn" (click)="generateMovie(cluster)">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 2l2.09 6.26L20 10l-5.91 1.74L12 18l-2.09-6.26L4 10l5.91-1.74z" />
-          </svg>
-          Generate Movie
-        </button>
-        }
-        @if (cluster.loading) {
-        <div class="cluster-spinner">
-          <span class="spinner-ring"></span>
-          <span class="spinner-label">Forging…</span>
-        </div>
-        }
-        @if (cluster.error) {
-        <div class="cluster-error">{{ cluster.error }}</div>
-        }
-      </div>
-      }
+  @if (error) {
+    <p class="error">{{ error }}</p>
+  }
 
-      <!-- Movie result card -->
-      @if (cluster.result) {
-      <div class="result-card">
-        <button class="result-dismiss" (click)="dismissResult(cluster)" aria-label="Dismiss">✕</button>
-        <div class="result-title">🎬 {{ cluster.result.title }}</div>
-        <div class="result-year">{{ cluster.result.release_year }}</div>
-        <p class="result-overview">{{ cluster.result.overview }}</p>
-        <div class="result-score-row">
-          <div class="score-track">
-            <div class="score-fill" [style.width]="(cluster.result.similarity * 100) + '%'"></div>
+  @if (results.length > 0) {
+    <section class="results">
+      <h2 class="results-heading">Top Matches</h2>
+      <div class="card-grid">
+        @for (movie of results; track movie.id; let i = $index) {
+          <div class="card" [style.animation-delay]="i * 60 + 'ms'">
+            <div class="card-rank">{{ i + 1 }}</div>
+            <div class="card-body">
+              <div class="card-header">
+                <h3 class="card-title">{{ movie.title }}</h3>
+                <span class="card-year">{{ movie.release_year }}</span>
+              </div>
+              <p class="card-overview">{{ movie.overview }}</p>
+              <div class="card-score">
+                <div class="score-bar-track">
+                  <div class="score-bar-fill" [style.width]="(movie.similarity * 100) + '%'"></div>
+                </div>
+                <span class="score-label">{{ (movie.similarity * 100).toFixed(0) }}% match</span>
+              </div>
+              <div class="card-actions">
+                <button
+                  class="action-btn action-btn--save"
+                  [class.active]="watchlistMap[movie.id] === 'saved'"
+                  (click)="toggleWatchlist(movie, 'saved')"
+                  [id]="'btn-save-' + movie.id"
+                >
+                  {{ watchlistMap[movie.id] === 'saved' ? 'Saved' : 'Add to Watchlist' }}
+                </button>
+                <button
+                  class="action-btn action-btn--watched"
+                  [class.active]="watchlistMap[movie.id] === 'watched'"
+                  (click)="toggleWatchlist(movie, 'watched')"
+                  [id]="'btn-watched-' + movie.id"
+                >
+                  {{ watchlistMap[movie.id] === 'watched' ? 'Watched' : 'Mark Watched' }}
+                </button>
+              </div>
+            </div>
           </div>
-          <span class="score-label">{{ (cluster.result.similarity * 100).toFixed(0) }}% match</span>
-        </div>
-      </div>
-      }
-    </div>
-    }
-
-  </div>
-
-  <!-- Floating input bar -->
-  <div class="floating-input-area" [style.bottom]="historyOpen ? '408px' : '52px'">
-    <div class="floating-bar">
-      <button class="bar-icon-btn" aria-label="Options">
-        <span class="material-symbols-rounded">
-          filter_alt
-        </span>
-      </button>
-      <input #wordInput class="bar-input" type="text" placeholder="Enter an element or movie idea..."
-        [(ngModel)]="currentInput" (input)="currentInput = wordInput.value" (keydown.enter)="addWord()"
-        autocomplete="off" spellcheck="false" />
-      <button class="bar-add-btn" (click)="addWord()" aria-label="Add word">
-        <span class="material-symbols-rounded">
-          add
-        </span>
-      </button>
-    </div>
-  </div>
-
-  <!-- Archive handle — lives outside the drawer for guaranteed z-index -->
-  <div class="archive-handle" (click)="toggleHistory()">
-    <div class="handle-pill"></div>
-    <span class="archive-label">The Archive</span>
-  </div>
-
-  <!-- History Drawer -->
-  <div class="history-drawer" [class.drawer-open]="historyOpen">
-    <div class="drawer-content">
-      <div class="drawer-header">
-        <h2 class="drawer-title">Recent Discoveries</h2>
-        @if (history.length > 0) {
-        <button class="clear-btn" (click)="clearHistory()">Clear Archive</button>
         }
       </div>
-
-      @if (history.length === 0) {
-      <p class="drawer-empty">Words you add will appear here.</p>
-      }
-
-      <div class="history-chips">
-        @for (word of history; track word) {
-        <button class="history-chip" (click)="spawnFromHistory(word)">
-          <span class="chip-emoji">🎬</span>
-          <span>{{ word }}</span>
-        </button>
-        }
-      </div>
-    </div>
-  </div>
+    </section>
+  }
 
 </div>

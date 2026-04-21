@@ -87,7 +87,8 @@ def search(request):
 
     results = [
         {
-            "id":           m["tmdb_id"],
+            "id":           m["id"],
+            "tmdb_id":      m["tmdb_id"],
             "title":        m["title"],
             "overview":     m["overview"],
             "release_year": m["release_year"],
