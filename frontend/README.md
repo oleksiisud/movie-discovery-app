@@ -1,8 +1,6 @@
 # CineMixer - Frontend
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 21.1.4.
-
-A modern Angular web application for the CineMixer. This frontend features server-side rendering (SSR), responsive design, and integration with AppWrite authentication.
+An Angular 21 web application for CineMixer featuring responsive design, Supabase-backed watchlist, and Supabase authentication.
 
 ## 📋 Table of Contents
 
@@ -22,15 +20,15 @@ A modern Angular web application for the CineMixer. This frontend features serve
 Before you begin, ensure you have the following installed:
 
 - **Node.js 18+** - [Download here](https://nodejs.org/)
-- **npm 11.2.0+** - Comes with Node.js
-- **Angular CLI 21.1.4+** - Will be installed via npm
-- **Git** - Version control
-- **AppWrite account** - For authentication (optional for local development)
+- **npm 11.2.0+** - comes with Node.js
+- **Angular CLI 21.1.4+** - installed automatically via npm scripts
+- **Git** - [Download here](https://git-scm.com/downloads)
+- **Supabase project** - for watchlist data and authentication ([supabase.com](https://supabase.com))
 
 **Verify Installation:**
 ```bash
-node --version
-npm --version
+node --version   # 18+
+npm --version    # 11+
 ```
 
 ## 🔧 Installation
@@ -48,12 +46,10 @@ cd movie-discovery-app/frontend
 npm install
 ```
 
-This will install all required packages including:
-- Angular 21.1.0
-- Angular CLI
-- TypeScript
-- AppWrite SDK
-- RxJS and other utilities
+This installs:
+- Angular 21
+- Supabase JS 2.x
+- RxJS, TypeScript, Express, and associated tooling
 
 ### 3. Environment Setup
 
@@ -66,6 +62,13 @@ cat src/environments/environment.ts
 # Production
 cat src/environments/environment.prod.ts
 ```
+
+Required `.env` keys (at the project root):
+```env
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-supabase-anon-key
+```
+
 ## ▶️ Running the Application
 
 ### Development Server
@@ -76,12 +79,7 @@ Start the development server with hot reload:
 npm start
 ```
 
-The application will be available at `http://localhost:4200`
-
-**Features:**
-- Automatic browser reload on file changes
-- Source maps for debugging
-- Fast compilation
+The application will usually be available at `http://localhost:4200`
 
 ### Access the Application
 
@@ -90,7 +88,7 @@ The application will be available at `http://localhost:4200`
 
 ### Stop the Server
 
-Press `Ctrl + C` in the terminal
+Press `Ctrl + C` in the terminal.
 
 ## 📁 Project Structure
 
@@ -98,33 +96,49 @@ Press `Ctrl + C` in the terminal
 frontend/
 ├── src/
 │   ├── app/
-│   │   ├── app.ts                # Main component
-│   │   ├── app.routes.ts         # Route definitions
-│   │   ├── app.config.ts         # App configuration
-│   │   ├── app.css               # Global styles
-│   │   ├── search/
-│   │   │   ├── search.component.ts      # Search component
-│   │   │   ├── search.component.html    # Search template
-│   │   │   └── search.component.css     # Search styles
-│   │   └── ... (other components)
+│   │   ├── search/                   # Word-combinator search page
+│   │   │   ├── search.component.ts   # API calls + watchlist toggling
+│   │   │   ├── search.component.html
+│   │   │   └── search.component.css
+│   │   ├── watchlist/                # Watchlist page (auth-guarded)
+│   │   │   ├── watchlist.component.ts
+│   │   │   ├── watchlist.component.html
+│   │   │   └── watchlist.component.css
+│   │   ├── account/                  # Login / register / profile
+│   │   │   ├── account.component.ts
+│   │   │   ├── account.component.html
+│   │   │   └── account.component.css
+│   │   ├── navbar/                   # Global navigation bar
+│   │   │   ├── navbar.component.ts
+│   │   │   ├── navbar.component.html
+│   │   │   └── navbar.component.css
+│   │   ├── core/
+│   │   │   ├── auth.guard.ts         # Route guard - redirects to /account if not logged in
+│   │   │   ├── supabase.service.ts   # Watchlist CRUD + session management
+│   │   │   └── services/
+│   │   │       └── config.service.ts # Runtime environment config (API_URL, etc.)
+│   │   ├── app.routes.ts             # Route definitions
+│   │   ├── app.config.ts             # App-level providers (HttpClient, Router, etc.)
+│   │   ├── app.ts                    # Root component
+│   │   └── app.html                  # Root template
 │   ├── environments/
-│   │   ├── environment.ts               # Dev environment config
-│   │   ├── environment.prod.ts          # Prod environment config
-│   │   └── environment.template.ts      # Template environment config
-│   ├── main.ts                   # Bootstrap application
-│   ├── main.server.ts            # SSR bootstrap
-│   ├── server.ts                 # Express server (SSR)
-│   ├── appwrite.ts               # AppWrite initialization
-│   ├── index.html                # Main HTML file
-│   ├── styles.css                # Global styles
-│   └── ... (other core files)
-├── public/                        # Static assets
-├── angular.json                   # Angular CLI config
-├── tsconfig.json                  # TypeScript config
-├── tsconfig.app.json              # App TypeScript config
-├── tsconfig.spec.json             # Test TypeScript config
-├── package.json                   # Dependencies
-└── README.md                      # This file
+│   │   ├── environment.ts            # Dev environment
+│   │   ├── environment.prod.ts       # Prod environment
+│   │   └── environment.template.ts   # Template environment
+│   ├── main.ts                       # Browser bootstrap
+│   ├── appwrite.ts                   # AppWrite client initialisation
+│   ├── styles.css                    # Global stylesheet
+│   └── index.html                    # Main HTML shell
+├── public/                           # Static assets (favicon, etc.)
+├── set-env.ts                        # Script: reads .env → generates environment files
+├── Dockerfile                        # Multi-stage production image
+├── netlify.toml                      # Netlify deployment config
+├── angular.json                      # Angular CLI configuration
+├── tsconfig.json                     # TypeScript base config
+├── tsconfig.app.json                 # App TypeScript config
+├── tsconfig.spec.json                # Test TypeScript config
+├── package.json                      # Dependencies & npm scripts
+└── README.md                         # This file
 ```
 
 ## 📝 Available Scripts
@@ -147,12 +161,6 @@ npm run watch
 ```bash
 # Build for production
 npm run build
-
-# Build with optimization flags
-npm run build -- --optimization --aot
-
-# Serve with SSR in production
-npm run serve:ssr:movie-discovery-app
 ```
 
 ### Testing
@@ -164,8 +172,8 @@ npm test
 # Run tests with coverage
 npm test -- --code-coverage
 
-# Run end-to-end tests (if configured)
-npm run e2e
+# Test a specific file
+npm test -- --include='**/search.component.spec.ts'
 ```
 
 ### Utilities
@@ -174,8 +182,9 @@ npm run e2e
 # Run Angular CLI commands
 npm run ng -- [command]
 
-# Example: Generate new component
+# Examples:
 npm run ng -- generate component components/my-component
+npm run ng -- generate service services/my-service
 ```
 
 ## 🛠️ Technologies Used
@@ -184,90 +193,86 @@ npm run ng -- generate component components/my-component
 |-----------|---------|---------|
 | Angular | 21.1.0 | Frontend framework |
 | TypeScript | 5.9.2 | Language |
-| Angular Router | 21.1.0 | Navigation |
-| Angular Forms | 21.1.0 | Form handling |
+| Angular Router | 21.1.0 | Client-side navigation |
+| Angular Forms | 21.1.0 | Reactive & template-driven forms |
 | Angular SSR | 21.1.4 | Server-side rendering |
-| AppWrite | 22.4.1 | Authentication |
-| RxJS | 7.8.0 | Reactive programming |
-| Express | 5.1.0 | Node.js server (SSR) |
-| Node | 20.19.33+ | Runtime environment |
+| Supabase JS | 2.x | Watchlist database client |
+| RxJS | 7.8.0 | Reactive streams |
 
 ## 💻 Development
 
-### Creating a New Component
+### Application Routes
+
+| Path | Component | Guard |
+|------|-----------|-------|
+| `/` | `SearchComponent` | None |
+| `/account` | `AccountComponent` | None |
+| `/watchlist` | `WatchlistComponent` | `authGuard` |
+| `/**` | Redirects to `/` | - |
+
+### Search Feature
+
+The `SearchComponent` accepts 2–5 descriptive words/phrases. On search:
+
+1. Words are sent as `POST /api/search/` to the Django backend.
+2. The backend generates a combined sentence embedding and queries Supabase for the top 10 most similar movies.
+3. Results are displayed as cards with **Want to Watch** / **Watched** action buttons.
+4. If the user is not authenticated, clicking a watchlist button redirects to `/account`.
+
+### Watchlist Feature
+
+`SupabaseService` (`core/supabase.service.ts`) exposes:
+
+```typescript
+// Add or update a movie's watch status
+upsertWatchlist(movieId: number, status: 'want_to_watch' | 'watched')
+
+// Remove a movie from the watchlist
+removeFromWatchlist(movieId: number)
+
+// Returns a { [movieId]: WatchStatus } map for the current user
+getWatchlistMap(): Promise<Record<number, WatchStatus>>
+
+// Observable of the current Supabase session
+session$: Observable<Session | null>
+```
+
+### Supabase Authentication
+
+```typescript
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { environment } from '../environments/environment';
+
+// Initialize Supabase
+export const supabase: SupabaseClient = createClient(
+  environment.supabaseUrl,
+  environment.supabaseKey
+);
+```
+
+### Adding a New Component
 
 ```bash
 npm run ng -- generate component components/my-component
 ```
 
-This creates:
-- Component class
-- Template file
-- Stylesheet
-- Spec file for testing
-
-### Creating a New Service
+### Adding a New Service
 
 ```bash
 npm run ng -- generate service services/my-service
 ```
 
-### Routing
+### Backend API Integration
 
-Edit `src/app/app.routes.ts` to add new routes:
-
-```typescript
-export const routes: Routes = [
-  { path: '', component: HomeComponent },
-  { path: 'search', component: SearchComponent },
-  { path: 'movie/:id', component: MovieDetailComponent },
-];
-```
-
-### Integration with Backend API
-
-Use Angular's `HttpClient` in services:
+Use Angular's `HttpClient`:
 
 ```typescript
 import { HttpClient } from '@angular/common/http';
+import { environment } from '../../environments/environment';
 
-@Injectable()
-export class MovieService {
-  private apiUrl = environment.apiUrl;
-
-  constructor(private http: HttpClient) {}
-
-  getMovies() {
-    return this.http.get(`${this.apiUrl}/movies/`);
-  }
-}
-```
-
-### AppWrite Authentication
-
-Initialize AppWrite in `src/appwrite.ts`:
-
-```typescript
-import { Client, Account } from 'appwrite';
-import { environment } from './environments/environment';
-
-const client = new Client()
-  .setEndpoint(environment.appwriteEndpoint)
-  .setProject(environment.appwriteProjectId);
-
-export const account = new Account(client);
-```
-
-Use in components:
-
-```typescript
-import { account } from '../appwrite';
-
-export class LoginComponent {
-  login(email: string, password: string) {
-    account.createEmailPasswordSession(email, password);
-  }
-}
+this.http.post<{ results: Movie[] }>(`${environment.apiUrl}/api/search/`, {
+  inputs: ['heist', 'comedy', 'europe'],
+}).subscribe(res => console.log(res.results));
 ```
 
 ## 🧪 Testing
@@ -292,7 +297,6 @@ Coverage report is generated in `coverage/` directory.
 npm test -- --include='**/search.component.spec.ts'
 ```
 
-
 ## 🔧 Troubleshooting
 
 ### Port 4200 Already in Use
@@ -316,38 +320,29 @@ kill -9 <PID>
 ### Dependencies Not Installed
 
 ```bash
-# Clear node_modules and cache
-rm -rf node_modules package-lock.json
-
-# Reinstall
+# Remove cache and reinstall
+rm -rf node_modules package-lock.json   # Unix/macOS
+rd /s /q node_modules & del package-lock.json   # Windows
 npm install
 ```
 
 ### Compilation Errors
 
 1. Check TypeScript types:
-   ```bash
-   npm run ng -- build --aot
-   ```
+```bash
+npm run ng -- build --aot
+```
 
 2. Ensure backend is running:
-   ```bash
-   # Check if backend API is accessible
-   curl http://localhost:8000/api/
-   ```
+```bash
+curl http://localhost:8000/api/
+```
 
 3. Clear Angular cache:
-   ```bash
-   rm -rf .angular
-   npm start
-   ```
-
-### AppWrite Connection Issues
-
-- Verify AppWrite endpoint in `.env`
-- Check AppWrite project ID
-- Ensure AppWrite instance is accessible
-- Check browser console for CORS errors
+```bash
+rm -rf .angular
+npm start
+```
 
 ### CORS Errors from API
 
@@ -367,10 +362,9 @@ npm start
 
 ## 📚 Additional Resources
 
-- [Angular Documentation](https://angular.io/docs)
-- [Angular CLI Guide](https://angular.io/cli)
-- [TypeScript Handbook](https://www.typescriptlang.org/docs/)
-- [AppWrite Documentation](https://appwrite.io/docs)
+- [Angular Documentation](https://angular.dev/docs)
+- [Angular CLI Reference](https://angular.dev/cli)
+- [Supabase JS Reference](https://supabase.com/docs/reference/javascript/introduction)
 - [RxJS Documentation](https://rxjs.dev/)
-- [Angular SSR Guide](https://angular.io/guide/universal)
-
+- [TypeScript Handbook](https://www.typescriptlang.org/docs/)
+- [Netlify Documentation](https://docs.netlify.com/)

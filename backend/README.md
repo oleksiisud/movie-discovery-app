@@ -1,15 +1,16 @@
 # CineMixer - Backend
 
-A Django REST API backend for the CineMixer. This service handles all movie data operations, user authentication integration, and vector embeddings for movie recommendations.
+A Django REST API backend for CineMixer. This service handles movie search using vector embeddings, Redis caching, and Supabase for data persistence.
 
 ## 📋 Table of Contents
 
-- [📋 Prerequisites](#-prerequisites)
+- [📋 Prerequisites](#-prerequisites)   
 - [🔧 Installation](#-installation)
 - [▶️ Running the Server](#️-running-the-server)
 - [📁 Project Structure](#-project-structure)
 - [🔌 API Endpoints](#-api-endpoints)
 - [🗄️ Database](#️-database)
+- [⚡ Redis Cache](#-redis-cache)
 - [🛠️ Technologies Used](#️-technologies-used)
 - [💻 Development](#-development)
 - [🧪 Testing](#-testing)
@@ -22,8 +23,10 @@ Before you begin, ensure you have the following installed:
 
 - **Python 3.8+** - [Download here](https://www.python.org/downloads/)
 - **pip** - Python package manager (comes with Python)
-- **Git** - Version control
-- **Supabase account** - For database (optional for local development)
+- **Redis** - for local caching ([Download here](https://redis.io/downloads/) or use Docker)
+- **Supabase account** - for the movie database ([supabase.com](https://supabase.com))
+- **HuggingFace account** - for the embedding API ([huggingface.co](https://huggingface.co))
+- **Git**
 
 ## 🔧 Installation
 
@@ -75,21 +78,26 @@ New-Item -Path ".env" -ItemType "file"
 Add the following configuration:
 
 ```env
+# HuggingFace - sentence-transformer embedding API
+HF_TOKEN=your-huggingface-token
+
+# TMDB - movie metadata
+TMDB_API_KEY=your-tmdb-api-key
+
+# Supabase
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your-supabase-key
+
 # Django Settings
 DEBUG=True
-SECRET_KEY=your-secret-key-here
+SECRET_KEY=your-django-secret-key
 ALLOWED_HOSTS=localhost,127.0.0.1
 
-# Supabase Configuration (if using)
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_API_KEY=your-supabase-key
-SUPABASE_SERVICE_KEY=your-service-key
-
-# Database (optional, uses SQLite by default)
-DATABASE_URL=sqlite:///db.sqlite3
-
-# Cors Settings
+# CORS Settings
 CORS_ALLOWED_ORIGINS=http://localhost:4200,http://localhost:3000
+
+# Redis Settings
+REDIS_URL=redis://localhost:6379/0
 ```
 
 ## ▶️ Running the Server
@@ -108,19 +116,27 @@ python manage.py createsuperuser
 
 Follow the prompts to create an admin account.
 
-### 3. Start the Development Server
+### 3. Start Redis
+
+If you're not using Docker, start a local Redis instance:
+
+```bash
+redis-server
+```
+
+### 4. Start the Development Server
 
 ```bash
 python manage.py runserver
 ```
 
-The API will be available at `http://localhost:8000`
+The API will be available at `http://localhost:8000`.
 
 **View Django Admin:**
 - URL: `http://localhost:8000/admin`
 - Login with the superuser credentials you created
 
-### 4. Verify Installation
+### 5. Verify Installation
 
 Test the API with a simple request:
 
@@ -134,25 +150,25 @@ Or visit `http://localhost:8000/api/` in your browser to see the API root.
 
 ```
 backend/
-├── app/                    # Main Django project configuration
-│   ├── settings.py        # Django settings
-│   ├── urls.py            # Main URL routing
-│   ├── wsgi.py            # WSGI application
-│   ├── asgi.py            # ASGI application
+├── app/                      # Django project configuration
+│   ├── settings.py           # Settings (CORS, Redis cache, Supabase, etc.)
+│   ├── urls.py               # Root URL routing
+│   ├── wsgi.py               # WSGI application
+│   ├── asgi.py               # ASGI application
 │   └── __init__.py
-├── movies/                # Movies Django app
-│   ├── models.py          # Database models
-│   ├── views.py           # API views and viewsets
-│   ├── urls.py            # App-specific routing
-│   ├── serializers.py     # DRF serializers (if exists)
-│   ├── embeddings.py      # Vector embeddings logic
-│   ├── supabase_client.py # Supabase integration
+├── movies/                   # Movies Django app
+│   ├── views.py              # /api/search/ view - handles word-combinator search
+│   ├── urls.py               # App-level routing
+│   ├── embeddings.py         # Vector embedding generation via HuggingFace API
+│   ├── supabase_client.py    # Supabase connection helper
+│   ├── models.py             # Django models (SQLite for admin, Supabase for movies)
 │   ├── apps.py
 │   └── __init__.py
-├── manage.py              # Django management command
-├── requirements.txt       # Python dependencies
-├── db.sqlite3             # SQLite database (local dev)
-└── .env                   # Environment variables (create this)
+├── manage.py                 # Django management script
+├── requirements.txt          # Python dependencies
+├── Procfile                  # Gunicorn command (production / Heroku)
+├── Dockerfile                # Production Docker image
+└── db.sqlite3                # SQLite database (local dev / admin only)
 ```
 
 ## 🔌 API Endpoints
@@ -163,53 +179,102 @@ backend/
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/search/` | Return top 10 movies based on use input |
+| `POST` | `/api/search/` | Returns top 10 movies semantically closest to the combined input words |
 
-### Admin Interface
+### `POST /api/search/`
 
-- **URL:** `http://localhost:8000/admin/`
-- Manage movies, users, and application data through the Django admin panel
+**Request body:**
+```json
+{
+  "inputs": ["heist", "comedy", "europe"]
+}
+```
+
+**Response:**
+```json
+{
+  "results": [
+    {
+      "id": 42,
+      "tmdb_id": 12345,
+      "title": "Ocean's Twelve",
+      "overview": "...",
+      "release_year": 2004,
+      "similarity": 0.87
+    }
+  ]
+}
+```
+
+- `inputs` must be an array of 2–5 strings.
+- Results are ordered by cosine similarity (descending).
+- Responses are cached in Redis to reduce redundant HuggingFace API calls.
 
 ## 🗄️ Database
 
-### Default Configuration (SQLite)
+### Local Development (SQLite)
 
-By default, the app uses SQLite for local development. Data is stored in `db.sqlite3`.
+By default, Django uses SQLite (`db.sqlite3`) for the admin interface and migrations.
 
-### Production Configuration (PostgreSQL/Supabase)
+### Production (Supabase / PostgreSQL)
 
-For production, configure PostgreSQL via Supabase:
+Movie data lives in Supabase. The `movies/supabase_client.py` module handles the connection:
 
-1. Create a Supabase project at [supabase.com](https://supabase.com)
-2. Add credentials to `.env`
-3. Update `settings.py` if needed to use PostgreSQL
-4. Run migrations: `python manage.py migrate`
+```python
+from movies.supabase_client import get_supabase_client
 
-### Reset Database (Development Only)
+client = get_supabase_client()
+rows = client.table("movies").select("*").execute()
+```
+
+### Populating Movie Data
+
+Use the injection script in the `dev/` folder:
 
 ```bash
-# Delete the database file
-rm db.sqlite3  # Unix/macOS
-# or
-del db.sqlite3  # Windows
-
-# Recreate migrations and database
-python manage.py migrate
-
-# Create a new superuser if needed
-python manage.py createsuperuser
+# From the project root
+python dev/movie_inject.py
 ```
+
+### Reset Local Database
+
+```bash
+del db.sqlite3           # Windows
+rm db.sqlite3            # Unix/macOS
+python manage.py migrate
+```
+
+## ⚡ Redis Cache
+
+Search results are cached by the combined input key to avoid redundant embedding API calls.
+
+**Configuration** (in `app/settings.py`):
+```python
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
+    }
+}
+```
+
+Redis runs automatically when using Docker Compose. For manual dev, start it separately with `redis-server`.
 
 ## 🛠️ Technologies Used
 
-| Technology | Version | Purpose |
-|-----------|---------|---------|
-| Django | 6.0.2 | Web framework |
-| Django REST Framework | Latest | RESTful API |
-| django-cors-headers | Latest | CORS support |
-| Supabase | Latest | Database & Auth |
-| requests | Latest | HTTP requests |
-| python-dotenv | Latest | Environment config |
+| Technology | Purpose |
+|-----------|---------|
+| Django | Web framework |
+| Django REST Framework | RESTful API layer |
+| django-cors-headers | CORS support for frontend |
+| django-redis | Redis cache backend |
+| redis / redis[hiredis] | High-performance Redis client |
+| Supabase Python SDK | Movie database access |
+| requests | HuggingFace embedding API calls |
+| numpy | Cosine similarity computation |
+| python-dotenv | `.env` variable loading |
+| gunicorn | Production WSGI server |
+| regex | Text pre-processing |
 
 ## 💻 Development
 
@@ -250,6 +315,8 @@ The `supabase_client.py` module handles Supabase connections:
 from movies.supabase_client import get_supabase_client
 
 client = get_supabase_client()
+result = client.table("movies").select("*").limit(10).execute()
+print(result.data)
 ```
 
 ### Adding Dependencies
@@ -283,7 +350,7 @@ python manage.py test movies
 pip install coverage
 coverage run --source='.' manage.py test
 coverage report
-coverage html
+coverage html   # Open htmlcov/index.html in a browser
 ```
 
 ## 🔧 Troubleshooting
@@ -296,15 +363,24 @@ If port 8000 is already in use:
 python manage.py runserver 8001
 ```
 
+### Redis Connection Refused
+
+Ensure Redis is running:
+```bash
+redis-server          # start locally
+redis-cli ping        # should return PONG
+```
+
+Or use Docker Compose which starts Redis automatically.
+
 ### Database Errors
 
-Clear and reset the database:
+Clear and reset the SQLite database:
 
 ```bash
-# Remove old database
-rm db.sqlite3  # Unix/macOS
+del db.sqlite3        # Windows
+rm db.sqlite3         # Unix/macOS
 
-# Create fresh database
 python manage.py migrate
 ```
 
@@ -330,9 +406,23 @@ Reinstall dependencies:
 pip install -r requirements.txt
 ```
 
+### CORS Errors from Frontend
+
+- Ensure `CORS_ALLOWED_ORIGINS` in `.env` includes `http://localhost:4200`.
+- Restart the Django server after changing `.env`.
+
 ## 📚 Additional Resources
 
 - [Django Documentation](https://docs.djangoproject.com/)
 - [Django REST Framework](https://www.django-rest-framework.org/)
-- [Supabase Documentation](https://supabase.com/docs)
-- [Django CORS Headers](https://github.com/adamchainz/django-cors-headers)
+- [Supabase Python Docs](https://supabase.com/docs/reference/python/introduction)
+- [HuggingFace Inference API](https://huggingface.co/docs/api-inference/index)
+- [django-redis](https://github.com/jazzband/django-redis)
+- [django-cors-headers](https://github.com/adamchainz/django-cors-headers)
+- [Gunicorn](https://gunicorn.org/)
+- [Heroku] (https://devcenter.heroku.com/categories/reference)
+- [Docker](https://docs.docker.com/get-started/overview/)
+- [Supabase](https://supabase.com/docs/guides/getting-started/quickstarts/python)
+- [HuggingFace](https://huggingface.co/docs/api-inference/index)
+- [Redis](https://redis.io/documentation/)
+
