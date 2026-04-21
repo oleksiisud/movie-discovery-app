@@ -1,6 +1,4 @@
-/* Global reset and design tokens */
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
-
+/* You can add global styles to this file, and also import other style files */
 :root {
   --bg: #0a0a0f;
   --surface: #13131a;
@@ -21,5 +19,4 @@
 html, body {
   height: 100%;
   background-color: #0a0a0f;
-  overflow: hidden;
 }
