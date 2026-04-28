@@ -12,6 +12,14 @@ from .supabase_client import get_client
 
 logger = logging.getLogger(__name__)
 
+# Canonical emotion names
+KNOWN_EMOTIONS = {
+    "happy", "sad", "angry", "anxious", "bored", "excited",
+    "playful", "lost", "reflective", "brave", "scared",
+    "hopeful", "nostalgic", "curious", "frustrated", "romantic",
+    "lonely", "depressed", "jealous", "overwhelmed"
+}
+
 
 @csrf_exempt
 @require_POST
@@ -101,3 +109,102 @@ def search(request):
     set_cached_results(cache_key, results)
 
     return JsonResponse({"results": results, "cached": False})
+
+
+@csrf_exempt
+@require_POST
+def recommend(request):
+    """
+    POST /api/recommend/
+
+    Returns a single movie recommendation based on the user's selected emotion.
+    Optionally scoped to a watchlist subset via `movie_ids`.
+
+    1. one of the 20 known emotion names
+    2. internal Supabase movie IDs to filter against (omit to search across all movies)
+
+    :param request: Django HttpRequest object
+    :return: JsonResponse with a single movie or null
+    """
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON."}, status=400)
+
+    emotion = body.get("emotion", "").strip().lower()
+    movie_ids = body.get("movie_ids", None)
+
+    logger.debug(movie_ids)
+
+    if not emotion or emotion not in KNOWN_EMOTIONS:
+        return JsonResponse(
+            {"error": f"Unknown emotion. Valid emotions: {sorted(KNOWN_EMOTIONS)}"},
+            status=400,
+        )
+
+    if movie_ids is not None:
+        if not isinstance(movie_ids, list) or not all(isinstance(i, int) for i in movie_ids):
+            return JsonResponse({"error": "movie_ids must be a list of integers."}, status=400)
+
+    supabase = get_client()
+
+    # Fetch pre-computed emotion embedding
+    em_resp = (
+        supabase.table("emotion_embeddings")
+        .select("embedding")
+        .eq("name", emotion)
+        .single()
+        .execute()
+    )
+
+    if not em_resp.data:
+        logger.error("No embedding found for emotion: %s", emotion)
+        return JsonResponse({"error": "Emotion embedding not found in database."}, status=404)
+
+    embedding = em_resp.data["embedding"]
+
+    # Build RPC params — filter_ids scopes results to the user's watchlist.
+    rpc_params: dict = {
+        "query_embedding": embedding,
+        "match_count": 5,
+        "match_threshold": -1.0,
+    }
+
+    scoped = bool(movie_ids)
+    if scoped:
+        rpc_params["filter_ids"] = movie_ids
+
+    response = supabase.rpc("match_movies_by_emotion", rpc_params).execute()
+    movies = response.data or []
+
+    # If the watchlist-scoped query returned nothing (e.g. those movies have no
+    # embedding stored), automatically fall back to all movies so the user
+    # always gets a result. The response includes `scope` so the frontend can
+    # surface a helpful message.
+    fell_back = False
+    if not movies and scoped:
+        logger.info(
+            "recommend: no results in watchlist scope for emotion=%r — falling back to all movies",
+            emotion,
+        )
+        rpc_params.pop("filter_ids", None)
+        response = supabase.rpc("match_movies_by_emotion", rpc_params).execute()
+        movies = response.data or []
+        fell_back = True
+
+    if not movies:
+        return JsonResponse({"result": None, "scope": "none"})
+
+    m = movies[0]
+    result = {
+        "id":           m["id"],
+        "tmdb_id":      m["tmdb_id"],
+        "title":        m["title"],
+        "overview":     m["overview"],
+        "release_year": m["release_year"],
+        "similarity":   round(m["similarity"], 4),
+    }
+
+    # `scope` tells the frontend whether the result came from the watchlist or all movies.
+    scope = "all" if (not scoped or fell_back) else "watchlist"
+    return JsonResponse({"result": result, "scope": scope})
