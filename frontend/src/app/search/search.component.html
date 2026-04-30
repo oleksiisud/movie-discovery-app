@@ -8,88 +8,178 @@
   <section class="input-area">
     <div class="chips-wrapper">
       @for (chip of inputs; track chip; let i = $index) {
-        <div class="chip">
-          <span>{{ chip }}</span>
-          <button class="chip-remove" (click)="removeInput(i)">X</button>
-        </div>
+      <div class="chip">
+        <span>{{ chip }}</span>
+        <button class="chip-remove" (click)="removeInput(i)">X</button>
+      </div>
       }
     </div>
 
-    @if (inputs.length < 5) {
-      <div class="input-row">
-        <input
-          #wordInput
-          class="word-input"
-          type="text"
-          [placeholder]="inputs.length === 0 ? 'e.g. revenge, desert, solitude...' : 'add another word or phrase'"
-          [(ngModel)]="currentInput"
-          (keydown.enter)="addInput()"
-        />
-        <button class="add-btn" (click)="addInput()" [disabled]="!currentInput.trim()">+</button>
-      </div>
+    @if (inputs.length < 5) { <div class="input-row">
+      <input #wordInput class="word-input" type="text"
+        [placeholder]="inputs.length === 0 ? 'e.g. revenge, desert, solitude...' : 'add another word or phrase'"
+        [(ngModel)]="currentInput" (keydown.enter)="addInput()" />
+      <button class="add-btn" (click)="addInput()" [disabled]="!currentInput.trim()">+</button>
+</div>
+}
+
+<p class="hint">{{ inputs.length }}/5 — need at least 2</p>
+
+<!-- Filter toggle + Search button row -->
+<div class="action-row">
+  <button class="filter-toggle-btn" [class.active]="filtersOpen" [class.has-filters]="activeFilterCount > 0"
+    (click)="toggleFilters()" id="btn-toggle-filters" type="button">
+    <span class="material-icons">filter_alt</span>
+    Filters
+    @if (activeFilterCount > 0) {
+    <span class="filter-badge">{{ activeFilterCount }}</span>
     }
+  </button>
 
-    <p class="hint">{{ inputs.length }}/5 — need at least 2</p>
+  <button class="search-btn" (click)="search()" [disabled]="inputs.length < 2 || loading" id="btn-search">
+    @if (loading) {
+    <span class="spinner"></span>
+    } @else {
+    Find Films
+    }
+  </button>
+</div>
+</section>
 
-    <button
-      class="search-btn"
-      (click)="search()"
-      [disabled]="inputs.length < 2 || loading"
-    >
-      @if (loading) {
-        <span class="spinner"></span>
-      } @else {
-        Find Films
-      }
-    </button>
-  </section>
+<!-- Filter Panel -->
+<div class="filter-panel" [class.open]="filtersOpen">
+  <div class="filter-panel-inner">
 
-  @if (error) {
-    <p class="error">{{ error }}</p>
-  }
-
-  @if (results.length > 0) {
-    <section class="results">
-      <h2 class="results-heading">Top Matches</h2>
-      <div class="card-grid">
-        @for (movie of results; track movie.id; let i = $index) {
-          <div class="card" [style.animation-delay]="i * 60 + 'ms'">
-            <div class="card-rank">{{ i + 1 }}</div>
-            <div class="card-body">
-              <div class="card-header">
-                <h3 class="card-title">{{ movie.title }}</h3>
-                <span class="card-year">{{ movie.release_year }}</span>
-              </div>
-              <p class="card-overview">{{ movie.overview }}</p>
-              <div class="card-score">
-                <div class="score-bar-track">
-                  <div class="score-bar-fill" [style.width]="(movie.similarity * 100) + '%'"></div>
-                </div>
-                <span class="score-label">{{ (movie.similarity * 100).toFixed(0) }}% match</span>
-              </div>
-              <div class="card-actions">
-                <button
-                  class="action-btn action-btn--save"
-                  [class.active]="watchlistMap[movie.id] === 'saved'"
-                  (click)="toggleWatchlist(movie, 'saved')"
-                  [id]="'btn-save-' + movie.id"
-                >
-                  {{ watchlistMap[movie.id] === 'saved' ? 'Saved' : 'Add to Watchlist' }}
-                </button>
-                <button
-                  class="action-btn action-btn--watched"
-                  [class.active]="watchlistMap[movie.id] === 'watched'"
-                  (click)="toggleWatchlist(movie, 'watched')"
-                  [id]="'btn-watched-' + movie.id"
-                >
-                  {{ watchlistMap[movie.id] === 'watched' ? 'Watched' : 'Mark Watched' }}
-                </button>
-              </div>
-            </div>
-          </div>
+    <!-- Sort By -->
+    <div class="filter-group">
+      <label class="filter-label">Sort By</label>
+      <div class="sort-options">
+        @for (opt of
+        [{value:'similarity',label:'Relevance'},{value:'popularity',label:'Popularity'},{value:'vote_average',label:'Rating'}];
+        track opt.value) {
+        <button class="sort-btn" [class.active]="filters.sortBy === opt.value"
+          (click)="filters.sortBy = $any(opt.value)" type="button">{{ opt.label }}</button>
         }
       </div>
-    </section>
-  }
+    </div>
+
+    <!-- Genres -->
+    @if (genres.length > 0) {
+    <div class="filter-group">
+      <label class="filter-label">Genres</label>
+      <div class="genre-grid">
+        @for (genre of genres; track genre.id) {
+        <button class="genre-chip" [class.active]="isGenreSelected(genre.id)" (click)="toggleGenre(genre.id)"
+          type="button" [id]="'genre-' + genre.id">{{ genre.name }}</button>
+        }
+      </div>
+    </div>
+    }
+
+    <!-- Release Year -->
+    <div class="filter-group filter-group--row">
+      <div class="filter-field">
+        <label class="filter-label" for="year-from">Year From</label>
+        <input id="year-from" class="filter-input" type="number" placeholder="e.g. 1990" [(ngModel)]="filters.yearFrom"
+          min="1888" max="2100" />
+      </div>
+      <div class="filter-field">
+        <label class="filter-label" for="year-to">Year To</label>
+        <input id="year-to" class="filter-input" type="number" placeholder="e.g. 2024" [(ngModel)]="filters.yearTo"
+          min="1888" max="2100" />
+      </div>
+    </div>
+
+    <!-- Runtime -->
+    <div class="filter-group filter-group--row">
+      <div class="filter-field">
+        <label class="filter-label" for="runtime-min">Min Runtime (min)</label>
+        <input id="runtime-min" class="filter-input" type="number" placeholder="e.g. 60"
+          [(ngModel)]="filters.runtimeMin" min="0" />
+      </div>
+      <div class="filter-field">
+        <label class="filter-label" for="runtime-max">Max Runtime (min)</label>
+        <input id="runtime-max" class="filter-input" type="number" placeholder="e.g. 180"
+          [(ngModel)]="filters.runtimeMax" min="0" />
+      </div>
+    </div>
+
+    <!-- Language -->
+    <div class="filter-group">
+      <label class="filter-label" for="language-select">Original Language</label>
+      <select id="language-select" class="filter-select" [(ngModel)]="filters.language">
+        <option [ngValue]="null">Any language</option>
+        @for (lang of languages; track lang.code) {
+        <option [value]="lang.code">{{ lang.label }}</option>
+        }
+      </select>
+    </div>
+
+    <!-- Clear filters -->
+    @if (activeFilterCount > 0) {
+    <button class="clear-filters-btn" (click)="clearFilters()" type="button" id="btn-clear-filters">
+      Clear all filters
+    </button>
+    }
+
+  </div>
+</div>
+
+@if (error) {
+<p class="error">{{ error }}</p>
+}
+
+@if (results.length > 0) {
+<section class="results">
+  <h2 class="results-heading">Top Matches</h2>
+  <div class="card-grid">
+    @for (movie of results; track movie.id; let i = $index) {
+    <div class="card" [style.animation-delay]="i * 60 + 'ms'">
+      <div class="card-rank">{{ i + 1 }}</div>
+      <div class="card-body">
+        <div class="card-header">
+          <h3 class="card-title">{{ movie.title }}</h3>
+          <span class="card-year">{{ movie.release_year }}</span>
+        </div>
+
+        <!-- Metadata badges -->
+        <div class="card-meta">
+          @if (movie.original_language) {
+          <span class="meta-badge meta-badge--lang">{{ movie.original_language | uppercase }}</span>
+          }
+          @if (movie.runtime) {
+          <span class="meta-badge meta-badge--runtime">{{ formatRuntime(movie.runtime) }}</span>
+          }
+          @if (movie.vote_average) {
+          <span class="meta-badge meta-badge--rating">★ {{ movie.vote_average.toFixed(1) }}</span>
+          }
+          @if (movie.popularity) {
+          <span class="meta-badge meta-badge--pop">↑ {{ movie.popularity.toFixed(0) }}</span>
+          }
+        </div>
+
+        <p class="card-overview">{{ movie.overview }}</p>
+        <div class="card-score">
+          <div class="score-bar-track">
+            <div class="score-bar-fill" [style.width]="(movie.similarity * 100) + '%'"></div>
+          </div>
+          <span class="score-label">{{ (movie.similarity * 100).toFixed(0) }}% match</span>
+        </div>
+        <div class="card-actions">
+          <button class="action-btn action-btn--save" [class.active]="watchlistMap[movie.id] === 'saved'"
+            (click)="toggleWatchlist(movie, 'saved')" [id]="'btn-save-' + movie.id">
+            {{ watchlistMap[movie.id] === 'saved' ? 'Saved' : 'Add to Watchlist' }}
+          </button>
+          <button class="action-btn action-btn--watched" [class.active]="watchlistMap[movie.id] === 'watched'"
+            (click)="toggleWatchlist(movie, 'watched')" [id]="'btn-watched-' + movie.id">
+            {{ watchlistMap[movie.id] === 'watched' ? 'Watched' : 'Mark Watched' }}
+          </button>
+        </div>
+      </div>
+    </div>
+    }
+  </div>
+</section>
+}
 
 </div>

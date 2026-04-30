@@ -20,6 +20,140 @@ KNOWN_EMOTIONS = {
     "lonely", "depressed", "jealous", "overwhelmed"
 }
 
+# Valid sort_by values accepted by both RPCs
+VALID_SORT_BY = {"similarity", "popularity", "vote_average"}
+
+
+def parse_filters(body: dict) -> tuple[dict, str | None]:
+    """
+    Extract and validate optional filter parameters from the request body.
+
+    genre_ids – list[int] Movies must belong to ALL listed genres
+    language – str ISO-639-1 code, e.g. 'en'
+    year_from – int Minimum release year (inclusive)
+    year_to – int Maximum release year (inclusive)
+    runtime_min – int Minimum runtime in minutes (inclusive)
+    runtime_max – int Maximum runtime in minutes (inclusive)
+    sort_by – str 'similarity' | 'popularity' | 'vote_average'
+
+    :param body: Parsed JSON request body
+    :return: (filters dict, error_message or None)
+    """
+    filters = {}
+
+    # genre_ids
+    genre_ids = body.get("genre_ids", None)
+    if genre_ids is not None:
+        if not isinstance(genre_ids, list) or not all(isinstance(g, int) for g in genre_ids):
+            return {}, "genre_ids must be a list of integers."
+        filters["genre_ids"] = genre_ids or None  # empty list → no filter
+
+    # language
+    language = body.get("language", None)
+    if language is not None:
+        if not isinstance(language, str) or len(language) > 10:
+            return {}, "language must be a short string (ISO-639-1 code)."
+        filters["language"] = language.strip().lower() or None
+
+    # year_from / year_to
+    for key in ("year_from", "year_to"):
+        val = body.get(key, None)
+        if val is not None:
+            if not isinstance(val, int) or val < 1888 or val > 2100:
+                return {}, f"{key} must be an integer year between 1888 and 2100."
+            filters[key] = val
+
+    # runtime_min / runtime_max
+    for key in ("runtime_min", "runtime_max"):
+        val = body.get(key, None)
+        if val is not None:
+            if not isinstance(val, int) or val < 0:
+                return {}, f"{key} must be a non-negative integer."
+            filters[key] = val
+
+    # sort_by
+    sort_by = body.get("sort_by", "similarity")
+    if sort_by not in VALID_SORT_BY:
+        return {}, f"sort_by must be one of: {', '.join(sorted(VALID_SORT_BY))}."
+    filters["sort_by"] = sort_by
+
+    return filters, None
+
+
+def build_rpc_filter_params(filters: dict) -> dict:
+    """
+    Map validated filter dict to the parameter names expected by the Supabase RPCs.
+
+    :param filters: Validated filter dict from parse_filters
+    :return: Dict of kwargs to merge into the RPC params
+    """
+    params = {}
+
+    genre_ids = filters.get("genre_ids")
+    if genre_ids:
+        params["p_genre_ids"] = genre_ids
+
+    language = filters.get("language")
+    if language:
+        params["p_language"] = language
+
+    year_from = filters.get("year_from")
+    if year_from is not None:
+        params["p_year_from"] = year_from
+
+    year_to = filters.get("year_to")
+    if year_to is not None:
+        params["p_year_to"] = year_to
+
+    runtime_min = filters.get("runtime_min")
+    if runtime_min is not None:
+        params["p_runtime_min"] = runtime_min
+
+    runtime_max = filters.get("runtime_max")
+    if runtime_max is not None:
+        params["p_runtime_max"] = runtime_max
+
+    return params
+
+
+def sort_movies(movies: list, sort_by: str) -> list:
+    """
+    Re-order a list of movie dicts that were already retrieved by similarity.
+    Sorting is applied as a secondary ranking on the candidate set, so the
+    pool of relevant movies never changes — only their display order does.
+
+    :param movies: List of movie dicts from the Supabase RPC
+    :param sort_by: 'similarity' | 'popularity' | 'vote_average'
+    :return: Sorted list
+    """
+    if sort_by == "popularity":
+        return sorted(movies, key=lambda m: m.get("popularity") or 0, reverse=True)
+    if sort_by == "vote_average":
+        return sorted(movies, key=lambda m: m.get("vote_average") or 0, reverse=True)
+    # Default: similarity order as returned by Postgres
+    return movies
+
+
+def serialize_movie(m: dict) -> dict:
+    """
+    Serialize a movie row returned from the Supabase RPC into the API response format.
+
+    :param m: Raw movie dict from Supabase
+    :return: Serialized dict for JSON response
+    """
+    return {
+        "id":                m["id"],
+        "tmdb_id":           m["tmdb_id"],
+        "title":             m["title"],
+        "overview":          m["overview"],
+        "release_year":      m["release_year"],
+        "popularity":        m.get("popularity"),
+        "vote_average":      m.get("vote_average"),
+        "runtime":           m.get("runtime"),
+        "original_language": m.get("original_language"),
+        "similarity":        round(m["similarity"], 4),
+    }
+
 
 @csrf_exempt
 @require_POST
@@ -28,10 +162,11 @@ def search(request):
     POST /api/search/
 
     1. Validates and normalises the `inputs` list (2–5 words/phrases)
-    2. Checks Redis cache — returns immediately on a HIT
-    3. On a MISS: embeds the query via HuggingFace → 384-dim vector
-    4. Calls Supabase match_movies RPC
-    5. Stores the result in Redis and returns it
+    2. Parses optional filter/sort parameters
+    3. Checks Redis cache — returns immediately on a HIT
+    4. On a MISS: embeds the query via HuggingFace → 384-dim vector
+    5. Calls Supabase match_movies RPC with filter params
+    6. Stores the result in Redis and returns it
 
     :param request: Django HttpRequest object
     :return: JsonResponse with search results or error message
@@ -57,14 +192,21 @@ def search(request):
         if re.search(r'\W ', term):
             return JsonResponse({"error": "Query contains invalid characters"}, status=400)
 
+    # Parse filter params
+    filters, filter_error = parse_filters(body)
+    if filter_error:
+        return JsonResponse({"error": filter_error}, status=400)
+
     # Build query string for the embedding model
     query_text = ", ".join(inputs)
 
-    # Cache check — skip expensive HuggingFace + Supabase calls on a HIT
-    cache_key = make_cache_key(inputs)
+    # Cache check — skip expensive HuggingFace + Supabase calls on a HIT.
+    cache_key = make_cache_key(inputs, filters)
+    sort_by = filters.get("sort_by", "similarity")
     cached = get_cached_results(cache_key)
     if cached is not None:
-        return JsonResponse({"results": cached, "cached": True})
+        sorted_cached = sort_movies(cached, sort_by)
+        return JsonResponse({"results": [serialize_movie(m) for m in sorted_cached[:10]], "cached": True})
 
     # Cache MISS — embed and query
     try:
@@ -80,33 +222,25 @@ def search(request):
 
     supabase = get_client()
 
-    response = (
-        supabase
-        .rpc("match_movies", {
-            "query_embedding": embedding,
-            "match_count": 20,
-            "match_threshold": -1.0,
-        })
-        .execute()
-    )
+    rpc_params = {
+        "query_embedding": embedding,
+        "match_count": 20,
+        "match_threshold": -1.0,
+        **build_rpc_filter_params(filters),
+    }
+
+    response = supabase.rpc("match_movies", rpc_params).execute()
 
     movies = response.data or []
     logger.debug("Supabase RPC returned %d results", len(movies))
 
-    results = [
-        {
-            "id":           m["id"],
-            "tmdb_id":      m["tmdb_id"],
-            "title":        m["title"],
-            "overview":     m["overview"],
-            "release_year": m["release_year"],
-            "similarity":   round(m["similarity"], 4),
-        }
-        for m in movies[:10]
-    ]
+    # Store the raw similarity-ordered candidates in cache before sorting.
+    # This lets future requests with a different sort_by reuse the same entry.
+    set_cached_results(cache_key, movies)
 
-    # Store in cache for future identical queries
-    set_cached_results(cache_key, results)
+    # Sort and slice for the current response
+    movies = sort_movies(movies, sort_by)
+    results = [serialize_movie(m) for m in movies[:10]]
 
     return JsonResponse({"results": results, "cached": False})
 
@@ -118,10 +252,19 @@ def recommend(request):
     POST /api/recommend/
 
     Returns a single movie recommendation based on the user's selected emotion.
+    Supports the same filter/sort parameters as /api/search/.
     Optionally scoped to a watchlist subset via `movie_ids`.
 
-    1. one of the 20 known emotion names
-    2. internal Supabase movie IDs to filter against (omit to search across all movies)
+    Body parameters:
+    emotion – one of the 20 known emotion names
+    movie_ids – internal Supabase movie IDs to filter against
+    genre_ids – list of genre IDs
+    language – ISO-639-1 code
+    year_from – minimum release year
+    year_to – maximum release year
+    runtime_min – minimum runtime in minutes
+    runtime_max – maximum runtime in minutes
+    sort_by – 'similarity' | 'popularity' | 'vote_average'
 
     :param request: Django HttpRequest object
     :return: JsonResponse with a single movie or null
@@ -146,6 +289,11 @@ def recommend(request):
         if not isinstance(movie_ids, list) or not all(isinstance(i, int) for i in movie_ids):
             return JsonResponse({"error": "movie_ids must be a list of integers."}, status=400)
 
+    # Parse filter params (same as search)
+    filters, filter_error = parse_filters(body)
+    if filter_error:
+        return JsonResponse({"error": filter_error}, status=400)
+
     supabase = get_client()
 
     # Fetch pre-computed emotion embedding
@@ -168,6 +316,7 @@ def recommend(request):
         "query_embedding": embedding,
         "match_count": 5,
         "match_threshold": -1.0,
+        **build_rpc_filter_params(filters),
     }
 
     scoped = bool(movie_ids)
@@ -196,15 +345,8 @@ def recommend(request):
         return JsonResponse({"result": None, "scope": "none"})
 
     m = movies[0]
-    result = {
-        "id":           m["id"],
-        "tmdb_id":      m["tmdb_id"],
-        "title":        m["title"],
-        "overview":     m["overview"],
-        "release_year": m["release_year"],
-        "similarity":   round(m["similarity"], 4),
-    }
+    result = serialize_movie(m)
 
     # `scope` tells the frontend whether the result came from the watchlist or all movies.
     scope = "all" if (not scoped or fell_back) else "watchlist"
-    return JsonResponse({"result": result, "scope": scope})
+    return JsonResponse({"result": result, "scope": scope})
