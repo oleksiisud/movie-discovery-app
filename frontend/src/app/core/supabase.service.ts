@@ -7,6 +7,11 @@ import { ConfigService } from './services/config.service';
 // enum for watch status
 export type WatchStatus = 'saved' | 'watched';
 
+export interface Genre {
+  id: number;
+  name: string;
+}
+
 export interface WatchlistMovie {
   id: number;
   title: string;
@@ -153,5 +158,20 @@ export class SupabaseService {
       .eq('user_id', this.currentUser.id)
       .eq('movie_id', movieId);
     if (error) throw error;
+  }
+
+  // Genres
+
+  async getGenres(): Promise<Genre[]> {
+    if (!this.client) return [];
+    const { data, error } = await this.client
+      .from('genres')
+      .select('id, name')
+      .order('name', { ascending: true });
+    if (error) {
+      console.error('Failed to load genres:', error);
+      return [];
+    }
+    return (data ?? []) as Genre[];
   }
 }

@@ -75,3 +75,106 @@
   }
 
 </div>
+
+<!-- Mood FAB -->
+<button class="mood-fab" id="btn-mood-open" (click)="openMoodPicker()"
+  aria-label="Get a movie recommendation based on your mood">
+  <span class="mood-fab_label">What's your mood?</span>
+</button>
+
+<!-- Mood Modal -->
+@if (modalStep !== 'closed') {
+<div class="modal-overlay" (click)="closeModal()" id="modal-overlay" role="dialog" aria-modal="true">
+  <div class="modal" (click)="$event.stopPropagation()">
+
+    <!-- Close button -->
+    <button class="modal-close" (click)="closeModal()" id="btn-modal-close" aria-label="Close">✕</button>
+
+    <!-- Step 1: Emotion Picker -->
+    @if (modalStep === 'pick') {
+    <div class="modal-step" id="modal-step-pick">
+      <h2 class="modal-title">How are you feeling?</h2>
+      <p class="modal-subtitle">Pick a mood and we'll find a film from your watchlist.</p>
+
+      <div class="emotion-grid">
+        @for (emotion of emotions; track emotion.name) {
+        <button class="emotion-pill" [class.selected]="selectedEmotion?.name === emotion.name"
+          (click)="selectEmotion(emotion)" [id]="'btn-emotion-' + emotion.name">
+          <span class="emotion-pill_emoji">{{ emotion.emoji }}</span>
+          <span class="emotion-pill_label">{{ emotion.label }}</span>
+        </button>
+        }
+      </div>
+
+      <button class="modal-confirm-btn" id="btn-emotion-confirm" [disabled]="!selectedEmotion"
+        (click)="confirmEmotion()">
+        Find a Movie
+      </button>
+    </div>
+    }
+
+    <!-- Step 2: Result -->
+    @if (modalStep === 'result') {
+    <div class="modal-step" id="modal-step-result">
+
+      <!-- Loading state -->
+      @if (recommendLoading) {
+      <div class="rec-loading">
+        <div class="rec-loading_spinner"></div>
+        <p class="rec-loading_text">Finding your film…</p>
+      </div>
+      }
+
+      <!-- Error state -->
+      @else if (recommendError) {
+      <div class="rec-empty">
+        <p class="rec-empty_text">{{ recommendError }}</p>
+        <button class="modal-back-btn" (click)="openMoodPicker()" id="btn-back-to-pick">Try Again</button>
+      </div>
+      }
+
+      <!-- Result card -->
+      @else if (recommendation) {
+      <div class="rec-header">
+        <span class="rec-mood-badge">{{ selectedEmotion?.emoji }} {{ selectedEmotion?.label }}</span>
+        <h2 class="modal-title">We think you'd enjoy…</h2>
+      </div>
+
+      <div class="rec-card">
+        <div class="rec-card_title-row">
+          <h3 class="rec-card_title">{{ recommendation.title }}</h3>
+          <span class="rec-card_year">{{ recommendation.release_year }}</span>
+        </div>
+        <p class="rec-card_overview">{{ recommendation.overview }}</p>
+        <div class="rec-card_score">
+          <span class="rec-card_score-dot"></span>
+          {{ (recommendation.similarity * 100).toFixed(0) }}% mood match
+        </div>
+        @if (recommendScope === 'all') {
+        <p class="rec-card_scope-notice">No matches found in your watchlist — showing from all movies instead.</p>
+        }
+      </div>
+
+
+      <div class="rec-actions">
+        <button class="rec-action-link" id="btn-rec-another" (click)="recommendAnother()">
+          Recommend another from watchlist
+        </button>
+        <span class="rec-action-sep">·</span>
+        <button class="rec-action-link rec-action-link--dim" id="btn-rec-all" (click)="recommendFromAll()">
+          Recommend from all movies
+        </button>
+      </div>
+      }
+
+      <!-- Back link -->
+      <button class="modal-back-btn" id="btn-result-back" (click)="openMoodPicker()">
+        &lt;-- Change mood
+      </button>
+
+    </div>
+    }
+
+  </div>
+</div>
+}

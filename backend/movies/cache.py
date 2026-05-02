@@ -1,6 +1,6 @@
 import hashlib
 import logging
-
+import json
 from django.core.cache import cache
 from django.conf import settings
 
@@ -10,15 +10,32 @@ logger = logging.getLogger(__name__)
 _KEY_PREFIX = "movie_search"
 
 
-def make_cache_key(inputs: list[str]) -> str:
+def make_cache_key(inputs: list[str], filters: dict | None = None) -> str:
     """
-    Build a deterministic cache key from the list of query inputs.
+    Build a deterministic cache key from query inputs and optional filters.
 
     :param inputs: List of query inputs
-    :return: Cache key
+    :param filters: Optional dict of active filters (genre_ids, language, etc.)
+    :return: Cache key string
     """
+
     normalized = ",".join(sorted(s.lower().strip() for s in inputs))
-    digest = hashlib.sha1(normalized.encode()).hexdigest()  # noqa: S324 — not crypto
+
+    # Stable JSON representation of structural filters for hashing.
+    filter_str = ""
+    if filters:
+        clean = {}
+        for k, v in sorted(filters.items()):
+            if v is not None and k != "sort_by":
+                if isinstance(v, (list, tuple, set)):
+                    clean[k] = sorted(list(set(v)))
+                else:
+                    clean[k] = v
+        if clean:
+            filter_str = json.dumps(clean, sort_keys=True)
+
+    raw = f"{normalized}|{filter_str}"
+    digest = hashlib.sha1(raw.encode()).hexdigest()  # noqa: S324 — not crypto
     return f"{_KEY_PREFIX}:{digest}"
 
 
