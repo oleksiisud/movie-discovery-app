@@ -2,6 +2,8 @@ import json
 import logging
 
 import regex as re
+import httpx
+from postgrest.exceptions import APIError as PostgrestException
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
@@ -56,20 +58,36 @@ def parse_filters(body: dict) -> tuple[dict, str | None]:
         filters["language"] = language.strip().lower() or None
 
     # year_from / year_to
-    for key in ("year_from", "year_to"):
-        val = body.get(key, None)
+    year_from = body.get("year_from", None)
+    year_to = body.get("year_to", None)
+    for key, val in (("year_from", year_from), ("year_to", year_to)):
         if val is not None:
             if not isinstance(val, int) or val < 1888 or val > 2100:
                 return {}, f"{key} must be an integer year between 1888 and 2100."
-            filters[key] = val
+
+    if year_from is not None and year_to is not None and year_from > year_to:
+        return {}, "year must have year_from ≤ year_to"
+
+    if year_from is not None:
+        filters["year_from"] = year_from
+    if year_to is not None:
+        filters["year_to"] = year_to
 
     # runtime_min / runtime_max
-    for key in ("runtime_min", "runtime_max"):
-        val = body.get(key, None)
+    runtime_min = body.get("runtime_min", None)
+    runtime_max = body.get("runtime_max", None)
+    for key, val in (("runtime_min", runtime_min), ("runtime_max", runtime_max)):
         if val is not None:
             if not isinstance(val, int) or val < 0:
                 return {}, f"{key} must be a non-negative integer."
-            filters[key] = val
+
+    if runtime_min is not None and runtime_max is not None and runtime_min > runtime_max:
+        return {}, "runtime must have runtime_min ≤ runtime_max"
+
+    if runtime_min is not None:
+        filters["runtime_min"] = runtime_min
+    if runtime_max is not None:
+        filters["runtime_max"] = runtime_max
 
     # sort_by
     sort_by = body.get("sort_by", "similarity")
@@ -276,6 +294,7 @@ def recommend(request):
 
     emotion = body.get("emotion", "").strip().lower()
     movie_ids = body.get("movie_ids", None)
+    exclude_ids = body.get("exclude_ids", None)
 
     logger.debug(movie_ids)
 
@@ -289,6 +308,13 @@ def recommend(request):
         if not isinstance(movie_ids, list) or not all(isinstance(i, int) for i in movie_ids):
             return JsonResponse({"error": "movie_ids must be a list of integers."}, status=400)
 
+    if exclude_ids is not None:
+        if not isinstance(exclude_ids, list) or not all(isinstance(i, int) for i in exclude_ids):
+            return JsonResponse({"error": "exclude_ids must be a list of integers."}, status=400)
+        exclude_ids_set = set(exclude_ids)
+    else:
+        exclude_ids_set = set()
+
     # Parse filter params (same as search)
     filters, filter_error = parse_filters(body)
     if filter_error:
@@ -297,52 +323,65 @@ def recommend(request):
     supabase = get_client()
 
     # Fetch pre-computed emotion embedding
-    em_resp = (
-        supabase.table("emotion_embeddings")
-        .select("embedding")
-        .eq("name", emotion)
-        .single()
-        .execute()
-    )
-
-    if not em_resp.data:
-        logger.error("No embedding found for emotion: %s", emotion)
-        return JsonResponse({"error": "Emotion embedding not found in database."}, status=404)
-
-    embedding = em_resp.data["embedding"]
-
-    # Build RPC params — filter_ids scopes results to the user's watchlist.
-    rpc_params: dict = {
-        "query_embedding": embedding,
-        "match_count": 5,
-        "match_threshold": -1.0,
-        **build_rpc_filter_params(filters),
-    }
-
-    scoped = bool(movie_ids)
-    if scoped:
-        rpc_params["filter_ids"] = movie_ids
-
-    response = supabase.rpc("match_movies_by_emotion", rpc_params).execute()
-    movies = response.data or []
-
-    # If the watchlist-scoped query returned nothing (e.g. those movies have no
-    # embedding stored), automatically fall back to all movies so the user
-    # always gets a result. The response includes `scope` so the frontend can
-    # surface a helpful message.
-    fell_back = False
-    if not movies and scoped:
-        logger.info(
-            "recommend: no results in watchlist scope for emotion=%r — falling back to all movies",
-            emotion,
+    try:
+        em_resp = (
+            supabase.table("emotion_embeddings")
+            .select("embedding")
+            .eq("name", emotion)
+            .single()
+            .execute()
         )
-        rpc_params.pop("filter_ids", None)
+
+        if not em_resp.data:
+            logger.error("No embedding found for emotion: %s", emotion)
+            return JsonResponse({"error": "Emotion embedding not found in database."}, status=404)
+
+        embedding = em_resp.data["embedding"]
+
+        # Build RPC params — filter_ids scopes results to the user's watchlist.
+        match_count = 5 + len(exclude_ids_set)
+        rpc_params: dict = {
+            "query_embedding": embedding,
+            "match_count": match_count,
+            "match_threshold": -1.0,
+            **build_rpc_filter_params(filters),
+        }
+
+        scoped = bool(movie_ids)
+        if scoped:
+            rpc_params["filter_ids"] = movie_ids
+
         response = supabase.rpc("match_movies_by_emotion", rpc_params).execute()
         movies = response.data or []
-        fell_back = True
+        if exclude_ids_set:
+            movies = [m for m in movies if m["id"] not in exclude_ids_set]
+
+        # If the watchlist-scoped query returned nothing (e.g. those movies have no
+        # embedding stored), automatically fall back to all movies so the user
+        # always gets a result. The response includes `scope` so the frontend can
+        # surface a helpful message.
+        fell_back = False
+        if not movies and scoped:
+            logger.info(
+                "recommend: no results in watchlist scope for emotion=%r — falling back to all movies",
+                emotion,
+            )
+            rpc_params.pop("filter_ids", None)
+            response = supabase.rpc("match_movies_by_emotion", rpc_params).execute()
+            movies = response.data or []
+            if exclude_ids_set:
+                movies = [m for m in movies if m["id"] not in exclude_ids_set]
+            fell_back = True
+
+    except (httpx.ConnectError, httpx.RemoteProtocolError, PostgrestException) as e:
+        logger.error("Database or network error during recommend: %s", e)
+        return JsonResponse({"error": "Service unavailable"}, status=502)
 
     if not movies:
         return JsonResponse({"result": None, "scope": "none"})
+
+    sort_by = filters.get("sort_by", "similarity")
+    movies = sort_movies(movies, sort_by)
 
     m = movies[0]
     result = serialize_movie(m)

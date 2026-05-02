@@ -111,8 +111,13 @@ def fetch_movie_details(tmdb_id):
             "api_key": TMDB_API_KEY,
             "append_to_response": "keywords",
         },
+        timeout=10,
     )
-    data = detail_resp.json()
+    detail_resp.raise_for_status()
+    try:
+        data = detail_resp.json()
+    except ValueError as e:
+        raise Exception(f"Failed to parse JSON for movie {tmdb_id}: {e}")
 
     runtime = data.get("runtime") or None
     if runtime == 0:

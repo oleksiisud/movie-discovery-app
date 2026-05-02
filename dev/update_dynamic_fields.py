@@ -35,6 +35,7 @@ def fetch_all_movies():
             supabase
             .table("movies")
             .select("id, tmdb_id, runtime, original_language")
+            .order("id")
             .range(page * SUPABASE_PAGE_SIZE, (page + 1) * SUPABASE_PAGE_SIZE - 1)
             .execute()
         )

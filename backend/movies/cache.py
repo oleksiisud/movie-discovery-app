@@ -24,10 +24,13 @@ def make_cache_key(inputs: list[str], filters: dict | None = None) -> str:
     # Stable JSON representation of structural filters for hashing.
     filter_str = ""
     if filters:
-        clean = {
-            k: v for k, v in sorted(filters.items())
-            if v is not None and k != "sort_by"
-        }
+        clean = {}
+        for k, v in sorted(filters.items()):
+            if v is not None and k != "sort_by":
+                if isinstance(v, (list, tuple, set)):
+                    clean[k] = sorted(list(set(v)))
+                else:
+                    clean[k] = v
         if clean:
             filter_str = json.dumps(clean, sort_keys=True)
 

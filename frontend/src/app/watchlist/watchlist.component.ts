@@ -70,6 +70,7 @@ export class WatchlistComponent implements OnInit {
   recommendScope: 'watchlist' | 'all' | 'none' = 'none';
   recommendLoading = false;
   recommendError = '';
+  seenRecommendationIds: number[] = [];
 
   // Watchlist getters
   get savedEntries(): WatchlistEntry[] {
@@ -131,6 +132,7 @@ export class WatchlistComponent implements OnInit {
     this.recommendation = null;
     this.recommendError = '';
     this.recommendScope = 'none';
+    this.seenRecommendationIds = [];
     this.modalStep = 'pick';
   }
 
@@ -145,6 +147,7 @@ export class WatchlistComponent implements OnInit {
   // Called when user confirms their emotion on the pick step
   async confirmEmotion(): Promise<void> {
     if (!this.selectedEmotion) return;
+    this.seenRecommendationIds = [];
     const movieIds = this.entries.map(e => e.movie_id);
     await this.fetchRecommendation(this.selectedEmotion.name, movieIds.length ? movieIds : undefined);
   }
@@ -152,25 +155,32 @@ export class WatchlistComponent implements OnInit {
   // Re-run the recommendation scoped to the watchlist
   async recommendAnother(): Promise<void> {
     if (!this.selectedEmotion) return;
+    if (this.recommendation) {
+      this.seenRecommendationIds.push(this.recommendation.id);
+    }
     const movieIds = this.entries.map(e => e.movie_id);
-    await this.fetchRecommendation(this.selectedEmotion.name, movieIds.length ? movieIds : undefined);
+    await this.fetchRecommendation(this.selectedEmotion.name, movieIds.length ? movieIds : undefined, this.seenRecommendationIds);
   }
 
   // Re-run the recommendation across all movies ignoring watchlist
   async recommendFromAll(): Promise<void> {
     if (!this.selectedEmotion) return;
-    await this.fetchRecommendation(this.selectedEmotion.name, undefined);
+    if (this.recommendation) {
+      this.seenRecommendationIds.push(this.recommendation.id);
+    }
+    await this.fetchRecommendation(this.selectedEmotion.name, undefined, this.seenRecommendationIds);
   }
 
-  private async fetchRecommendation(emotion: string, movieIds?: number[]): Promise<void> {
+  private async fetchRecommendation(emotion: string, movieIds?: number[], excludeIds?: number[]): Promise<void> {
     this.recommendLoading = true;
     this.recommendError = '';
     this.recommendation = null;
     this.recommendScope = 'none';
     this.modalStep = 'result';
 
-    const body: { emotion: string; movie_ids?: number[] } = { emotion };
+    const body: { emotion: string; movie_ids?: number[]; exclude_ids?: number[] } = { emotion };
     if (movieIds?.length) body.movie_ids = movieIds;
+    if (excludeIds?.length) body.exclude_ids = excludeIds;
 
     try {
       const res = await firstValueFrom(
