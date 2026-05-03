@@ -7,8 +7,13 @@ export const routes: Routes = [
   { path: '', component: SearchComponent },
   { path: 'test', component: TestComponent },
   {
+    path: 'login',
+    loadComponent: () => import('./login/login.component').then(m => m.LoginComponent),
+  },
+  {
     path: 'account',
     loadComponent: () => import('./account/account.component').then(m => m.AccountComponent),
+    canActivate: [authGuard],
   },
   {
     path: 'watchlist',

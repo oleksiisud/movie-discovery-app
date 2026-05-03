@@ -1,30 +1,119 @@
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
 .top-nav {
-  position: relative;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
   z-index: 50;
   display: flex;
   align-items: center;
-  height: 68px;
-  padding: 0 32px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-  background: rgba(10, 10, 15, 0.7);
-  backdrop-filter: blur(16px);
+  height: 72px;
+  padding: 0 24px;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* ── Logo: liquid-glass orb ── */
+@property --logo-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes logo-spin-gradient {
+  to {
+    --logo-angle: 360deg;
+  }
 }
 
 .nav-logo {
-  font-family: 'Space Grotesk', sans-serif;
-  font-weight: 700;
-  font-size: 1.4rem;
-  letter-spacing: -0.05em;
-  color: var(--accent);
+  position: relative;
+  height: 52px;
+  width: 52px;
   text-decoration: none;
   cursor: pointer;
-  transition: opacity 0.2s;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Animated conic-gradient border via padding trick */
+  padding: 2px;
+  border-radius: 14px;
+  background: var(--border);
+  animation:
+    logo-spin-gradient 4s linear infinite;
+  transition: transform 0.3s var(--ease-spring), box-shadow 0.3s;
+  box-shadow:
+    0 0 12px rgba(232, 201, 125, 0.35),
+    0 0 32px rgba(192, 132, 252, 0.2),
+    0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+/* Glassy inner container */
+.nav-logo::before {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border-radius: 12px;
+  background:
+    radial-gradient(ellipse at 30% 25%, rgba(255, 255, 255, 0.12) 0%, transparent 60%),
+    linear-gradient(145deg, rgba(13, 13, 26, 0.85) 0%, rgba(7, 7, 15, 0.95) 100%);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 0;
+}
+
+/* Liquid shimmer sweep */
+.nav-logo::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border-radius: 12px;
+  background: linear-gradient(115deg,
+      transparent 20%,
+      rgba(255, 255, 255, 0.08) 50%,
+      transparent 80%);
+  background-size: 200% 100%;
+  animation: logo-shimmer 2.5s ease-in-out infinite;
+  z-index: 1;
+  pointer-events: none;
+}
+
+@keyframes logo-shimmer {
+  0% {
+    background-position: -100% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.nav-logo img {
+  position: relative;
+  z-index: 2;
+  height: 28px;
+  width: 28px;
+  filter:
+    brightness(0) saturate(100%) invert(92%) sepia(12%) saturate(1702%) hue-rotate(335deg) brightness(110%) contrast(91%) drop-shadow(0 0 6px rgba(232, 201, 125, 0.6));
+  transition: filter 0.3s, transform 0.3s var(--ease-spring);
 }
 
 .nav-logo:hover {
-  opacity: 0.8;
+  transform: scale(1.1);
+  box-shadow:
+    0 0 20px rgba(232, 201, 125, 0.5),
+    0 0 48px rgba(192, 132, 252, 0.3),
+    0 8px 28px rgba(0, 0, 0, 0.6);
+  animation:
+    logo-spin-gradient 2s linear infinite;
+}
+
+
+
+.nav-logo:active {
+  transform: scale(0.96);
 }
 
 .nav-links {
@@ -107,4 +196,75 @@
 
 .material-symbols-rounded {
   font-size: 1.5rem;
+}
+
+/* Dropdown Menu */
+.account-menu-container {
+  position: relative;
+  pointer-events: auto;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: var(--glass-border);
+  border-radius: var(--radius-md);
+  padding: 8px;
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: var(--shadow-md);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-10px);
+  transition: all var(--dur-fast) var(--ease-out-expo);
+  z-index: 100;
+}
+
+.dropdown-menu.show {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.dropdown-item {
+  background: none;
+  border: none;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  text-decoration: none;
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: background var(--dur-fast), color var(--dur-fast);
+  text-align: left;
+  width: 100%;
+}
+
+.dropdown-item .material-symbols-rounded {
+  font-size: 1.25rem;
+}
+
+.dropdown-item:hover {
+  background: var(--surface-hover);
+  color: var(--accent);
+}
+
+.dropdown-item.text-danger {
+  color: var(--danger);
+}
+
+.dropdown-item.text-danger:hover {
+  background: var(--danger-dim);
+  color: var(--danger);
 }

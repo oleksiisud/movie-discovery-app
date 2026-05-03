@@ -1,33 +1,34 @@
 <nav class="top-nav" role="navigation" aria-label="Main navigation">
-  <a class="nav-logo" [routerLink]="['/']" aria-label="CineMixer home">CineMixer</a>
-
-  <div class="nav-links">
-    <a
-      class="nav-link"
-      [routerLink]="['/']"
-      routerLinkActive="active"
-      [routerLinkActiveOptions]="{ exact: true }"
-      id="nav-link-discover"
-      aria-current="page"
-    >Discover</a>
-    <a
-      class="nav-link"
-      [routerLink]="['/watchlist']"
-      routerLinkActive="active"
-      id="nav-link-watchlist"
-    >Watchlist</a>
-  </div>
+  <a class="nav-logo" [routerLink]="['/']" aria-label="CineMixer home"><img src="/cinemixer.svg" alt="CineMixer" /></a>
 
   <div class="nav-actions">
-    <button class="nav-btn" id="nav-btn-settings" title="Settings" aria-label="Settings">
-      <span class="material-symbols-rounded">settings</span>
-    </button>
-    <a class="nav-btn" [routerLink]="['/account']" id="nav-btn-account" title="Account" aria-label="Account">
-      @if (session$ | async) {
+    <div class="account-menu-container">
+      <button class="nav-btn" id="nav-btn-account" title="Account Menu" aria-label="Account Menu"
+        (click)="toggleDropdown($event)">
+        @if (session$ | async) {
         <span class="user-avatar">{{ getUserInitials() }}</span>
-      } @else {
+        } @else {
         <span class="material-symbols-rounded">account_circle</span>
-      }
-    </a>
+        }
+      </button>
+      <div class="dropdown-menu" [class.show]="isDropdownOpen">
+        <a class="dropdown-item" [routerLink]="['/account']" (click)="isDropdownOpen = false">
+          <span class="material-symbols-rounded">person</span>
+          Account
+        </a>
+        <a class="dropdown-item" [routerLink]="['/watchlist']" (click)="isDropdownOpen = false">
+          <span class="material-symbols-rounded">bookmark</span>
+          Watchlist
+        </a>
+        <button class="dropdown-item" (click)="isDropdownOpen = false">
+          <span class="material-symbols-rounded">settings</span>
+          Settings
+        </button>
+        <button class="dropdown-item text-danger" (click)="logout()">
+          <span class="material-symbols-rounded">logout</span>
+          Log out
+        </button>
+      </div>
+    </div>
   </div>
 </nav>

@@ -5,9 +5,6 @@
     <p class="tagline">save movies for later</p>
   </header>
 
-  @if (session$ | async; as session) {
-
-  <!-- Logged-in state -->
   <div class="card profile-card">
     <div class="avatar-wrap">
       <div class="avatar-circle">{{ getUserInitials() }}</div>
@@ -17,59 +14,11 @@
       <p class="profile-label">Signed in</p>
     </div>
     <div class="profile-actions">
-      <a class="btn btn--primary" [routerLink]="['/watchlist']" id="btn-go-watchlist">
+      <a class="btn btn-primary" [routerLink]="['/watchlist']" id="btn-go-watchlist">
         Go to Watchlist
       </a>
-      <button class="btn btn--ghost" id="btn-sign-out" (click)="signOut()">Sign Out</button>
+      <button class="btn btn-ghost" id="btn-sign-out" (click)="signOut()">Sign Out</button>
     </div>
   </div>
-
-  } @else {
-
-  <!-- Auth form -->
-  <div class="card">
-
-    <div class="tab-toggle" role="tablist">
-      <button class="tab" role="tab" [class.active]="mode === 'signin'" (click)="switchMode('signin')"
-        id="tab-signin" [attr.aria-selected]="mode === 'signin'">Sign In</button>
-      <button class="tab" role="tab" [class.active]="mode === 'signup'" (click)="switchMode('signup')"
-        id="tab-signup" [attr.aria-selected]="mode === 'signup'">Create Account</button>
-    </div>
-
-    @if (successMessage) {
-    <p class="success-msg" role="status">{{ successMessage }}</p>
-    }
-
-    @if (error) {
-    <p class="error-msg" role="alert">{{ error }}</p>
-    }
-
-    <form (ngSubmit)="submit()" #authForm="ngForm" novalidate>
-
-      <div class="field">
-        <label for="auth-email" class="field-label">Email</label>
-        <input id="auth-email" type="email" class="field-input" [(ngModel)]="email" name="email"
-          placeholder="you@example.com" autocomplete="email" required />
-      </div>
-
-      <div class="field">
-        <label for="auth-password" class="field-label">Password</label>
-        <input id="auth-password" type="password" class="field-input" [(ngModel)]="password" name="password"
-          placeholder="••••••••" [autocomplete]="mode === 'signin' ? 'current-password' : 'new-password'" required />
-      </div>
-
-      <button type="submit" class="btn btn--primary full-width" id="btn-auth-submit"
-        [disabled]="loading || !email || !password">
-        @if (loading) {
-        <span class="spinner"></span>
-        } @else {
-        {{ mode === 'signin' ? 'Sign In' : 'Create Account' }}
-        }
-      </button>
-
-    </form>
-  </div>
-
-  }
 
 </div>

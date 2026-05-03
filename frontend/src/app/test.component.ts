@@ -1,12 +1,11 @@
-import { Component, ElementRef, OnInit, ViewChild, NgZone } from '@angular/core';
+import { Component, ElementRef, OnInit, ViewChild, NgZone, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import * as d3 from 'd3';
 
 interface WebNode extends d3.SimulationNodeDatum {
     id: string;
     name: string;
-    color: string;
-    type: 'element' | 'hub'; // Hub is the mix button
+    type: 'element' | 'hub' | 'movie'; // Hub is the mix button
     stationId?: string; // Which hub this element belongs to
 }
 
@@ -23,23 +22,59 @@ interface WebLink extends d3.SimulationLinkDatum<WebNode> {
     standalone: true,
     imports: [CommonModule],
     template: `
-    <svg #svgContainer style="width: 100%; height: 100%;" class="canvas">
+    <svg #svgContainer class="canvas">
+        <defs>
+            <!-- A gorgeous gold gradient for the Mix Hubs -->
+            <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#e8c97d" />
+                <stop offset="100%" stop-color="#c9983a" />
+            </linearGradient>
+
+            <filter id='noise' x='0%' y='0%' width='100%' height='100%'>
+                <feTurbulence type="fractalNoise" baseFrequency="0.005" numOctaves="3" stitchTiles="stitch" result="clouds" />
+                <feColorMatrix type="saturate" values="0" in="clouds" result="grayClouds" />
+                <feComponentTransfer in="grayClouds" result="contrastClouds">
+                    <feFuncR type="linear" slope="2" intercept="-0.5"/>
+                    <feFuncG type="linear" slope="2" intercept="-0.5"/>
+                    <feFuncB type="linear" slope="2" intercept="-0.5"/>
+                </feComponentTransfer>
+                <!-- Multiply the SourceGraphic by the B&W clouds -->
+                <feBlend mode="multiply" in="SourceGraphic" in2="contrastClouds" />
+            </filter>
+        </defs>
         
+        <!-- Apply the filter to a solid gold rect to get purely golden noise -->
+        <rect x="0" y="0" width="100%" height="100%" fill="var(--accent)" filter="url(#noise)" class="noise-rect" />
     </svg>
   `,
-    styles: [`.canvas {background: #ffffff; display: block; }`]
+    styles: [`
+        :host { display: block; width: 100vw; height: 100vh; overflow: hidden; }
+        .canvas {
+            background-color: var(--bg);
+            background-image: var(--grad-bg);
+            display: block;
+            width: 100%;
+            height: 100%;
+            user-select: none;
+        }
+        .noise-rect {
+            mix-blend-mode: screen; 
+            opacity: 0.05; /* Made it very faint as requested */
+            pointer-events: none;
+        }
+    `]
 })
 export class TestComponent implements OnInit {
     @ViewChild('svgContainer', { static: true }) svgContainer!: ElementRef;
 
     nodes: WebNode[] = [
-        { id: '1', name: 'Fire 🔥', color: '#ffcccb', type: 'element' },
-        { id: '2', name: 'Water 💧', color: '#cce5ff', type: 'element' },
-        { id: '3', name: 'Earth 🪨', color: '#e2c2a3', type: 'element' },
-        { id: '4', name: 'Wind 💨', color: '#e6e6e6', type: 'element' },
-        { id: '5', name: 'Life 🌱', color: '#d4edda', type: 'element' },
-        { id: '6', name: 'Energy ⚡', color: '#fff3cd', type: 'element' },
-        { id: '7', name: 'Metal ⚙️', color: '#d6d8db', type: 'element' }
+        { id: '1', name: 'Fire 🔥', type: 'element' },
+        { id: '2', name: 'Water 💧', type: 'element' },
+        { id: '3', name: 'Earth 🪨', type: 'element' },
+        { id: '4', name: 'Wind 💨', type: 'element' },
+        { id: '5', name: 'Life 🌱', type: 'element' },
+        { id: '6', name: 'Energy ⚡', type: 'element' },
+        { id: '7', name: 'Metal ⚙️', type: 'element' }
     ];
     links: WebLink[] = [];
 
@@ -51,7 +86,18 @@ export class TestComponent implements OnInit {
     private nodeElements!: d3.Selection<SVGGElement, WebNode, SVGGElement, unknown>;
     private linkElements!: d3.Selection<SVGLineElement, WebLink, SVGGElement, unknown>;
 
+    // Performance Caches
+    private viewWidth = typeof window !== 'undefined' ? window.innerWidth : 1000;
+    private viewHeight = typeof window !== 'undefined' ? window.innerHeight : 1000;
+    private hubCache = new Map<string, { sumX: number, sumY: number, count: number }>();
+
     constructor(private ngZone: NgZone) { }
+
+    @HostListener('window:resize')
+    onResize() {
+        this.viewWidth = window.innerWidth;
+        this.viewHeight = window.innerHeight;
+    }
 
     ngOnInit() {
         this.ngZone.runOutsideAngular(() => {
@@ -59,35 +105,49 @@ export class TestComponent implements OnInit {
         });
     }
 
-    private rebuildNodeMap() {
-        this.nodeMap.clear();
-        for (const n of this.nodes) this.nodeMap.set(n.id, n);
+    private generateId(): string {
+        return Math.random().toString(36).substring(2, 11);
     }
 
-    // Calculates how long the invisible hub spoke needs to be so the boxes don't overlap
+    private rebuildNodeMap() {
+        this.nodeMap.clear();
+        for (const n of this.nodes) {
+            this.nodeMap.set(n.id, n);
+        }
+    }
+
+    private getLinkId(node: string | WebNode | undefined): string {
+        if (!node) return '';
+        return typeof node === 'string' ? node : node.id;
+    }
+
     getRadius(n: number): number {
         return Math.max(130, (n * 140) / (2 * Math.PI));
     }
 
-    // Custom rectangular collision force to fix vertical gaps
     rectCollide() {
         let nodes: WebNode[] = [];
 
         function force(alpha: number) {
             const padding = 10;
-            for (let i = 0; i < nodes.length; i++) {
-                for (let j = i + 1; j < nodes.length; j++) {
-                    const a = nodes[i];
+            const len = nodes.length;
+
+            for (let i = 0; i < len; i++) {
+                const a = nodes[i];
+                const aIsHub = a.type === 'hub';
+                const aIsMovie = a.type === 'movie' && !a.stationId;
+                const aW = aIsHub ? 35 : aIsMovie ? 70 : 56;
+                const aH = aIsHub ? 35 : aIsMovie ? 130 : 18;
+
+                for (let j = i + 1; j < len; j++) {
                     const b = nodes[j];
+                    const bIsHub = b.type === 'hub';
 
-                    // Hubs don't collide with other hubs
-                    if (a.type === 'hub' && b.type === 'hub') continue;
+                    if (aIsHub && bIsHub) continue;
 
-                    // Elements are 120x44 (half: 60x22). Hubs are treated as 35x35 boxes for collision.
-                    const aW = a.type === 'hub' ? 35 : 56;
-                    const aH = a.type === 'hub' ? 35 : 18;
-                    const bW = b.type === 'hub' ? 35 : 56;
-                    const bH = b.type === 'hub' ? 35 : 18;
+                    const bIsMovie = b.type === 'movie' && !b.stationId;
+                    const bW = bIsHub ? 35 : bIsMovie ? 70 : 56;
+                    const bH = bIsHub ? 35 : bIsMovie ? 130 : 18;
 
                     let dx = (a.x || 0) - (b.x || 0);
                     let dy = (a.y || 0) - (b.y || 0);
@@ -105,7 +165,6 @@ export class TestComponent implements OnInit {
                         const overlapX = minX - absDx;
                         const overlapY = minY - absDy;
 
-                        // Resolve on axis of least penetration
                         if (overlapX < overlapY) {
                             const moveX = (overlapX / 2) * Math.sign(dx) * alpha * 0.5;
                             a.vx = (a.vx || 0) + moveX;
@@ -132,12 +191,9 @@ export class TestComponent implements OnInit {
     }
 
     initGraph() {
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-
         for (const n of this.nodes) {
-            n.x = Math.random() * (width - 100) + 50;
-            n.y = Math.random() * (height - 100) + 50;
+            n.x = Math.random() * (this.viewWidth - 100) + 50;
+            n.y = Math.random() * (this.viewHeight - 100) + 50;
         }
 
         this.rebuildNodeMap();
@@ -147,16 +203,21 @@ export class TestComponent implements OnInit {
         this.nodeGroup = this.svg.append('g');
 
         this.simulation = d3.forceSimulation<WebNode>(this.nodes)
-            .velocityDecay(0.8) // Stationary drift
+            .velocityDecay(0.8)
             .force('collide', this.rectCollide())
             .force('link', d3.forceLink<WebNode, WebLink>(this.links).id(d => d.id)
                 .distance(d => {
-                    const r = d.n || 3
+                    const r = d.n || 3;
                     if (d.type === 'spoke') return this.getRadius(r);
                     if (d.type === 'ring') return 2 * this.getRadius(r) * Math.sin(Math.PI / r);
-                    return 140; // Loose link
+
+                    const sNode = typeof d.source === 'string' ? this.nodeMap.get(d.source) : d.source;
+                    const tNode = typeof d.target === 'string' ? this.nodeMap.get(d.target) : d.target;
+
+                    if (sNode?.type === 'movie' || tNode?.type === 'movie') return 380;
+                    return 140;
                 })
-                .strength(d => d.type === 'loose' ? 0.5 : 1)) // Make Rings/Spokes extremely rigid (1.0)
+                .strength(d => d.type === 'loose' ? 0.5 : 1))
             .on('tick', () => this.ticked());
 
         this.updateGraph();
@@ -164,66 +225,189 @@ export class TestComponent implements OnInit {
 
     updateGraph() {
         this.rebuildNodeMap();
-        // 1. Render Visible Links (Hide the invisible spokes!)
+        this.renderLinks();
+        this.renderNodes();
+
+        this.linkElements = this.linkGroup.selectAll<SVGLineElement, WebLink>('line');
+        this.nodeElements = this.nodeGroup.selectAll<SVGGElement, WebNode>('g.node');
+
+        this.simulation.nodes(this.nodes);
+        (this.simulation.force('link') as d3.ForceLink<WebNode, WebLink>).links(this.links);
+        this.simulation.alphaTarget(0.5).restart();
+    }
+
+    private renderLinks() {
         const visibleLinks = this.links.filter(l => l.type !== 'spoke');
-        const LinkElems = this.linkGroup.selectAll<SVGLineElement, WebLink>('line')
+        const linkElems = this.linkGroup.selectAll<SVGLineElement, WebLink>('line')
             .data(visibleLinks, d => d.id);
 
-        LinkElems.enter()
+        linkElems.enter()
             .append('line')
-            .attr('stroke-width', 4)
-            .attr('stroke', d => d.type === 'ring' ? '#ff9800' : '#a0aec0');
+            .attr('stroke-width', 3)
+            .attr('stroke', d => d.type === 'ring' ? 'var(--accent)' : 'var(--border-hover)')
+            .style('filter', d => d.type === 'ring' ? 'drop-shadow(0 0 12px var(--accent-glow))' : 'none');
 
-        LinkElems.exit().remove();
+        linkElems.exit().remove();
+    }
 
-        // 2. Render Nodes (Both Elements and Hubs)
-        const NodeElems = this.nodeGroup.selectAll<SVGGElement, WebNode>('g.node').data(this.nodes, d => d.id);
+    private renderNodes() {
+        const nodeElems = this.nodeGroup.selectAll<SVGGElement, WebNode>('g.node')
+            .data(this.nodes, d => d.id);
 
-        const nodeEnter = NodeElems.enter()
+        const nodeEnter = nodeElems.enter()
             .append('g')
             .attr('class', 'node')
             .style('cursor', 'grab')
             .call(this.drag(this.simulation))
-            .on('click', (event: any, d: WebNode) => {
-                if (event.defaultPrevented) return; // Ignore click if we were dragging
+            .on('click', (event: MouseEvent, d: WebNode) => {
+                if (event.defaultPrevented) return;
                 if (d.type === 'hub') this.triggerMix(d);
             });
 
         nodeEnter.each((d, i, nodes) => {
             const el = d3.select(nodes[i]);
             if (d.type === 'element') {
-                el.append('rect').attr('width', 120).attr('height', 44).attr('rx', 6).attr('x', -60).attr('y', -22).attr('fill', d.color).attr('stroke', '#4a5568').attr('stroke-width', 2);
-                el.append('text').text(d.name).attr('text-anchor', 'middle').attr('dy', 5).style('fill', '#1a202c').style('font-family', 'sans-serif').style('font-size', '14px').style('font-weight', 'bold').style('pointer-events', 'none');
+                this.renderElementNode(el, d);
+            } else if (d.type === 'movie') {
+                this.renderMovieNode(el, d);
             } else if (d.type === 'hub') {
-                el.append('circle').attr('r', 35).attr('fill', '#ff9800').attr('stroke', '#e65100').attr('stroke-width', 3).style('filter', 'drop-shadow(0px 4px 4px rgba(0,0,0,0.2))');
-                el.append('text').text('Mix').attr('text-anchor', 'middle').attr('dy', 5).style('fill', 'white').style('font-weight', 'bold').style('pointer-events', 'none');
+                this.renderHubNode(el, d);
             }
         });
 
-        NodeElems.exit().remove();
+        // UPDATE Phase: Animate collapsed movies
+        nodeElems.merge(nodeEnter).each((d, i, nodes) => {
+            if (d.type === 'movie') {
+                const el = d3.select(nodes[i]);
+                const isCollapsed = !!d.stationId;
 
-        // 3. Cache Selections for ticked() performance
-        this.linkElements = this.linkGroup.selectAll<SVGLineElement, WebLink>('line');
-        this.nodeElements = this.nodeGroup.selectAll<SVGGElement, WebNode>('g.node');
+                el.select('rect')
+                    .transition().duration(300)
+                    .attr('width', isCollapsed ? 120 : 140)
+                    .attr('height', isCollapsed ? 44 : 260)
+                    .attr('x', isCollapsed ? -60 : -70)
+                    .attr('y', isCollapsed ? -22 : -130);
 
-        // 4. Restart Physics Engine
-        this.simulation.nodes(this.nodes);
-        (this.simulation.force('link') as d3.ForceLink<WebNode, WebLink>).links(this.links);
-        this.simulation.alphaTarget(0.5).restart();
+                el.select('foreignObject')
+                    .transition().duration(300)
+                    .attr('width', isCollapsed ? 120 : 140)
+                    .attr('height', isCollapsed ? 44 : 260)
+                    .attr('x', isCollapsed ? -60 : -70)
+                    .attr('y', isCollapsed ? -22 : -130);
+
+                el.select('.movie-poster')
+                    .transition().duration(300)
+                    .style('height', isCollapsed ? '0px' : '210px')
+                    .style('opacity', isCollapsed ? '0' : '1');
+            }
+        });
+
+        nodeElems.exit().remove();
+    }
+
+    private renderElementNode(el: d3.Selection<SVGGElement, unknown, null, undefined>, d: WebNode) {
+        el.append('rect')
+            .attr('width', 120).attr('height', 44)
+            .attr('rx', 12)
+            .attr('x', -60).attr('y', -22)
+            .attr('fill', 'transparent');
+
+        const fo = el.append('foreignObject')
+            .attr('width', 120).attr('height', 44)
+            .attr('x', -60).attr('y', -22)
+            .style('pointer-events', 'none');
+
+        fo.append('xhtml:div')
+            .attr('class', 'glass')
+            .style('width', '100%')
+            .style('height', '100%')
+            .style('display', 'flex')
+            .style('align-items', 'center')
+            .style('justify-content', 'center')
+            .style('border-radius', '12px')
+            .style('color', 'var(--text)')
+            .style('font-family', 'var(--font-ui)')
+            .style('font-size', '14px')
+            .style('font-weight', '500')
+            .style('box-shadow', '0px 4px 16px rgba(0,0,0,0.5)')
+            .style('box-sizing', 'border-box')
+            .style('margin', '0')
+            .text(d.name);
+    }
+
+    private renderMovieNode(el: d3.Selection<SVGGElement, unknown, null, undefined>, d: WebNode) {
+        const w = 140;
+        const h = 260;
+        const posterH = 210;
+
+        el.append('rect')
+            .attr('width', w).attr('height', h)
+            .attr('rx', 12)
+            .attr('x', -w / 2).attr('y', -h / 2)
+            .attr('fill', 'transparent');
+
+        const fo = el.append('foreignObject')
+            .attr('width', w).attr('height', h)
+            .attr('x', -w / 2).attr('y', -h / 2)
+            .style('pointer-events', 'none');
+
+        const card = fo.append('xhtml:div')
+            .attr('class', 'glass')
+            .style('width', '100%').style('height', '100%')
+            .style('display', 'flex')
+            .style('flex-direction', 'column')
+            .style('border-radius', '12px')
+            .style('box-shadow', '0px 8px 24px rgba(0,0,0,0.6)')
+            .style('box-sizing', 'border-box')
+            .style('overflow', 'hidden')
+            .style('margin', '0');
+
+        card.append('xhtml:div')
+            .attr('class', 'movie-poster')
+            .style('width', '100%')
+            .style('height', posterH + 'px')
+            .style('background', 'rgba(255,255,255,0.05)')
+            .style('border-bottom', 'var(--glass-border)');
+
+        card.append('xhtml:div')
+            .style('flex', '1')
+            .style('display', 'flex')
+            .style('align-items', 'center')
+            .style('justify-content', 'center')
+            .style('color', 'var(--teal)')
+            .style('font-family', 'var(--font-ui)')
+            .style('font-size', '14px')
+            .style('font-weight', '600')
+            .text(d.name);
+    }
+
+    private renderHubNode(el: d3.Selection<SVGGElement, unknown, null, undefined>, d: WebNode) {
+        el.append('circle')
+            .attr('r', 35)
+            .attr('fill', 'url(#goldGrad)')
+            .attr('stroke', 'var(--accent)')
+            .attr('stroke-width', 1)
+            .style('filter', 'drop-shadow(0px 0px 24px var(--accent-glow))');
+
+        el.append('text').text('Mix')
+            .attr('text-anchor', 'middle')
+            .attr('dy', 5)
+            .style('fill', '#07070f')
+            .style('font-family', 'var(--font-ui)')
+            .style('font-size', '14px')
+            .style('font-weight', '600')
+            .style('pointer-events', 'none');
     }
 
     ticked() {
-        // O(N) Hub centering calculation using a Cache map
-        const hubCache = new Map<string, { sumX: number, sumY: number, count: number }>();
+        this.hubCache.clear();
 
-        // 1. Accumulate node positions into the cache
-        for (let i = 0; i < this.nodes.length; i++) {
-            const c = this.nodes[i];
+        for (const c of this.nodes) {
             if (c.stationId) {
-                let cache = hubCache.get(c.stationId);
+                let cache = this.hubCache.get(c.stationId);
                 if (!cache) {
                     cache = { sumX: 0, sumY: 0, count: 0 };
-                    hubCache.set(c.stationId, cache);
+                    this.hubCache.set(c.stationId, cache);
                 }
                 cache.sumX += c.x || 0;
                 cache.sumY += c.y || 0;
@@ -231,11 +415,9 @@ export class TestComponent implements OnInit {
             }
         }
 
-        // 2. Apply the cached averages to center the hubs
-        for (let i = 0; i < this.nodes.length; i++) {
-            const hub = this.nodes[i];
+        for (const hub of this.nodes) {
             if (hub.type === 'hub') {
-                const cache = hubCache.get(hub.id);
+                const cache = this.hubCache.get(hub.id);
                 if (cache && cache.count > 0) {
                     hub.x = cache.sumX / cache.count;
                     hub.y = cache.sumY / cache.count;
@@ -245,21 +427,16 @@ export class TestComponent implements OnInit {
             }
         }
 
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-
-        // Bounding box collision
-        for (let i = 0; i < this.nodes.length; i++) {
-            const n = this.nodes[i];
-            const rX = n.type === 'hub' ? 35 : 60; // Element half-width is 60, Hub is 35
-            const rY = n.type === 'hub' ? 35 : 22; // Element half-height is 22, Hub is 35
+        for (const n of this.nodes) {
+            const rX = n.type === 'hub' ? 35 : (n.type === 'movie' && !n.stationId) ? 70 : 60;
+            const rY = n.type === 'hub' ? 35 : (n.type === 'movie' && !n.stationId) ? 130 : 22;
 
             if (n.x !== undefined && n.y !== undefined) {
                 if (n.x < rX) { n.x = rX; n.vx = (n.vx || 0) * -0.5; }
-                else if (n.x > width - rX) { n.x = width - rX; n.vx = (n.vx || 0) * -0.5; }
+                else if (n.x > this.viewWidth - rX) { n.x = this.viewWidth - rX; n.vx = (n.vx || 0) * -0.5; }
 
                 if (n.y < rY) { n.y = rY; n.vy = (n.vy || 0) * -0.5; }
-                else if (n.y > height - rY) { n.y = height - rY; n.vy = (n.vy || 0) * -0.5; }
+                else if (n.y > this.viewHeight - rY) { n.y = this.viewHeight - rY; n.vy = (n.vy || 0) * -0.5; }
             }
         }
 
@@ -277,51 +454,48 @@ export class TestComponent implements OnInit {
         }
     }
 
-    // --- DRAG HANDLERS ---
     drag(simulation: d3.Simulation<WebNode, WebLink>) {
         return d3.drag<SVGGElement, WebNode>()
-            .on('start', (event, d) => {
-                if (d.type === 'hub') return; // Ignore dragging on the MIX button entirely!
+            .on('start', (event: d3.D3DragEvent<SVGGElement, WebNode, WebNode>, d: WebNode) => {
+                if (d.type === 'hub') return;
                 if (!event.active) simulation.alphaTarget(0.3).restart();
                 d.fx = d.x; d.fy = d.y;
             })
-            .on('drag', (event, d) => {
+            .on('drag', (event: d3.D3DragEvent<SVGGElement, WebNode, WebNode>, d: WebNode) => {
                 if (d.type === 'hub') return;
-                const width = window.innerWidth;
-                const height = window.innerHeight;
-                d.fx = Math.max(60, Math.min(width - 60, event.x));
-                d.fy = Math.max(22, Math.min(height - 22, event.y));
+                const rX = (d.type === 'movie' && !d.stationId) ? 70 : 60;
+                const rY = (d.type === 'movie' && !d.stationId) ? 130 : 22;
+                d.fx = Math.max(rX, Math.min(this.viewWidth - rX, event.x));
+                d.fy = Math.max(rY, Math.min(this.viewHeight - rY, event.y));
             })
-            .on('end', (event, d) => {
+            .on('end', (event: d3.D3DragEvent<SVGGElement, WebNode, WebNode>, d: WebNode) => {
                 if (d.type === 'hub') return;
-
                 if (!event.active) simulation.alphaTarget(0);
                 d.fx = null; d.fy = null;
                 this.checkProximity(d);
             });
     }
 
-    // --- THE NEW CLUSTER MERGE LOGIC ---
-
-    // Gets all node IDs related to a dragged piece (the whole circle, or a loose chain)
     getClusterIds(startNode: WebNode): Set<string> {
         const cluster = new Set<string>();
         if (startNode.type === 'hub' || startNode.stationId) {
             const hubId = startNode.type === 'hub' ? startNode.id : startNode.stationId!;
             cluster.add(hubId);
-            this.nodes.forEach(n => { if (n.stationId === hubId) cluster.add(n.id); });
+            for (const n of this.nodes) {
+                if (n.stationId === hubId) cluster.add(n.id);
+            }
         } else {
             const findLinks = (nId: string) => {
                 if (cluster.has(nId)) return;
                 cluster.add(nId);
-                this.links.forEach(l => {
+                for (const l of this.links) {
                     if (l.type === 'loose') {
-                        const s = (l.source as any).id || l.source;
-                        const t = (l.target as any).id || l.target;
+                        const s = this.getLinkId(l.source);
+                        const t = this.getLinkId(l.target);
                         if (s === nId) findLinks(t);
                         if (t === nId) findLinks(s);
                     }
-                });
+                }
             };
             findLinks(startNode.id);
         }
@@ -341,7 +515,8 @@ export class TestComponent implements OnInit {
             let isClose = false;
 
             for (const myId of myIds) {
-                const myNode = this.nodeMap.get(myId)!;
+                const myNode = this.nodeMap.get(myId);
+                if (!myNode) continue;
 
                 const dx = (myNode.x || 0) - (targetNode.x || 0);
                 const dy = (myNode.y || 0) - (targetNode.y || 0);
@@ -355,9 +530,7 @@ export class TestComponent implements OnInit {
             if (!isClose) continue;
 
             if (targetNode.type === 'hub' || targetNode.stationId) {
-                targetHubId = targetNode.type === 'hub'
-                    ? targetNode.id
-                    : targetNode.stationId!;
+                targetHubId = targetNode.type === 'hub' ? targetNode.id : targetNode.stationId!;
             } else {
                 for (const id of this.getClusterIds(targetNode)) {
                     looseNodes.add(id);
@@ -381,16 +554,13 @@ export class TestComponent implements OnInit {
         }
     }
 
-    // --- HUB STRUCTURAL BUILDERS ---
-
     mergeTwoHubs(hubId1: string, hubId2: string) {
         const nodesFromHub2 = this.nodes.filter(n => n.stationId === hubId2).map(n => n.id);
-        this.nodes = this.nodes.filter(n => n.id !== hubId2); // Delete Hub 2
+        this.nodes = this.nodes.filter(n => n.id !== hubId2);
         this.absorbLooseNodes(hubId1, nodesFromHub2);
     }
 
     absorbLooseNodes(hubId: string, elementIds: string[]) {
-        // Assign new nodes to the hub
         const elements = this.nodes.filter(n => elementIds.includes(n.id));
         elements.forEach(n => n.stationId = hubId);
         this.rebuildHubStructure(hubId);
@@ -401,9 +571,8 @@ export class TestComponent implements OnInit {
         const cx = elements.reduce((sum, n) => sum + (n.x || 0), 0) / elements.length;
         const cy = elements.reduce((sum, n) => sum + (n.y || 0), 0) / elements.length;
 
-        // Spawn Hub Node
-        const hubId = 'hub-' + Math.random().toString(36).substr(2, 9);
-        this.nodes.push({ id: hubId, type: 'hub', name: 'MIX', color: '', x: cx, y: cy, vx: 0, vy: 0 });
+        const hubId = 'hub-' + this.generateId();
+        this.nodes.push({ id: hubId, type: 'hub', name: 'MIX', x: cx, y: cy, vx: 0, vy: 0 });
 
         elements.forEach(n => n.stationId = hubId);
         this.rebuildHubStructure(hubId);
@@ -415,35 +584,27 @@ export class TestComponent implements OnInit {
         const N = elements.length;
         const R = this.getRadius(N);
 
-        // 1. Delete all existing loose links involving these nodes
         const allIds = [hubId, ...elements.map(e => e.id)];
         this.links = this.links.filter(l => {
-            const s = (l.source as any).id || l.source;
-            const t = (l.target as any).id || l.target;
+            const s = this.getLinkId(l.source);
+            const t = this.getLinkId(l.target);
             return !(allIds.includes(s) || allIds.includes(t));
         });
 
-        // 2. Sort nodes by angle to prevent tangled springs
         elements.sort((a, b) => Math.atan2((a.y || 0) - (hub.y || 0), (a.x || 0) - (hub.x || 0)) - Math.atan2((b.y || 0) - (hub.y || 0), (b.x || 0) - (hub.x || 0)));
 
-        // 3. Forge the Physical Springs immediately (they will pull the structure together behind the scenes)
         elements.forEach((n, i) => {
             const nextNode = elements[(i + 1) % N];
             this.links.push({ id: `spoke-${hubId}-${n.id}`, type: 'spoke', source: hubId, target: n.id, n: N });
             this.links.push({ id: `ring-${n.id}-${nextNode.id}`, type: 'ring', source: n.id, target: nextNode.id, n: N });
         });
 
-        // --- NEW: THE CINEMATIC ANIMATION ---
-
-        // Create a 600ms transition with a smooth deceleration
         const t = d3.transition().duration(600).ease(d3.easeCubicOut);
 
-        // When the animation finishes, release the nodes back to the physical springs!
         t.on('end', () => {
             elements.forEach(n => { n.fx = null; n.fy = null; });
         });
 
-        // Animate each node to its perfect spot in the circle
         elements.forEach((n, i) => {
             const angle = (i / N) * Math.PI * 2;
             const targetX = (hub.x || 0) + R * Math.cos(angle);
@@ -452,19 +613,15 @@ export class TestComponent implements OnInit {
             const startX = n.x || 0;
             const startY = n.y || 0;
 
-            // Lock the node exactly where it currently is so physics can't move it
             n.fx = startX;
             n.fy = startY;
 
-            // Tween the X/Y coordinates to the target
             t.tween(`form-${n.id}`, () => {
                 const iX = d3.interpolate(startX, targetX);
                 const iY = d3.interpolate(startY, targetY);
                 return (time: number) => {
                     n.fx = iX(time);
                     n.fy = iY(time);
-
-                    // Keep the simulation awake so the visible lines draw on every frame of the animation
                     this.simulation.alpha(0.1).restart();
                 };
             });
@@ -473,23 +630,18 @@ export class TestComponent implements OnInit {
         this.updateGraph();
     }
 
-    // --- EXPLOSION LOGIC ---
-
     triggerMix(hub: WebNode) {
         const elements = this.nodes.filter(n => n.stationId === hub.id);
 
-        // 1. Destroy Hub and all related springs
         this.nodes = this.nodes.filter(n => n.id !== hub.id);
         this.links = this.links.filter(l => {
-            const s = (l.source as any).id || l.source;
-            const t = (l.target as any).id || l.target;
+            const s = this.getLinkId(l.source);
+            const t = this.getLinkId(l.target);
             return l.type === 'loose' || (!elements.find(e => e.id === s) && !elements.find(e => e.id === t));
         });
 
-        // 2. THE SHOCKWAVE: Temporarily make the board slippery!
         this.simulation.velocityDecay(0.2);
 
-        // 3. Release elements and apply a smooth outward slide
         elements.forEach(n => {
             n.stationId = undefined;
             n.fx = null;
@@ -499,17 +651,14 @@ export class TestComponent implements OnInit {
             const dy = (n.y || 0) - (hub.y || 0);
             const distance = Math.sqrt(dx * dx + dy * dy) || 1;
 
-            // A gentle speed of 15 + slippery friction = a beautiful, smooth slide
             n.vx = (dx / distance) * 15;
             n.vy = (dy / distance) * 15;
         });
 
-        // 4. Spawn Super Node in the exact center
         const newNode: WebNode = {
-            id: Math.random().toString(36).substr(2, 9),
-            name: 'Super Node ✨',
-            color: '#c2f0c2',
-            type: 'element',
+            id: this.generateId(),
+            name: 'Movie 🎥',
+            type: 'movie',
             x: hub.x,
             y: hub.y,
             vx: 0,
@@ -519,7 +668,6 @@ export class TestComponent implements OnInit {
         this.nodes.push(newNode);
         this.updateGraph();
 
-        // 5. Restore the thick friction after half a second so things stop floating
         setTimeout(() => {
             this.simulation.velocityDecay(0.8);
         }, 500);
