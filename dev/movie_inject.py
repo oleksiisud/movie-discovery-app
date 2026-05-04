@@ -253,7 +253,8 @@ def run_injection(target_count=10000, batch_size=16):
                 "runtime": details["runtime"],
                 "genre_ids": m.get("genre_ids", []),
                 "keywords": details["keywords"],
-                "text": build_movie_text(m["title"], details["keywords"], m["overview"])
+                "text": build_movie_text(m["title"], details["keywords"], m["overview"]),
+                "poster_path": m.get("poster_path"),
             })
             time.sleep(0.05)
 
@@ -282,7 +283,8 @@ def run_injection(target_count=10000, batch_size=16):
                     "vote_average": movie["vote_average"],
                     "original_language": movie["original_language"],
                     "runtime": movie["runtime"],
-                    "embedding": embedding
+                    "embedding": embedding,
+                    "poster_path": movie["poster_path"],
                 }).execute()
 
                 movie_id = movie_insert.data[0]["id"]

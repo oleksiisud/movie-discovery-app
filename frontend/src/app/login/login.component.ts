@@ -1,7 +1,7 @@
 import { Component, inject, ChangeDetectorRef } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { SupabaseService } from '../core/supabase.service';
+import { SupabaseService } from '../core/services/supabase.service';
 
 @Component({
   selector: 'app-login',

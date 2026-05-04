@@ -5,7 +5,7 @@ import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { environment } from '../../environments/environment';
-import { SupabaseService, WatchStatus, Genre } from '../core/supabase.service';
+import { SupabaseService, WatchStatus, Genre } from '../core/services/supabase.service';
 
 export interface FilterState {
   genreIds: number[];

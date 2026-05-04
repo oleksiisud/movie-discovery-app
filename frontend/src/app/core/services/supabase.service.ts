@@ -2,7 +2,7 @@ import { Injectable, PLATFORM_ID, inject } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { createClient, SupabaseClient, Session, User } from '@supabase/supabase-js';
 import { BehaviorSubject, filter, firstValueFrom } from 'rxjs';
-import { ConfigService } from './services/config.service';
+import { ConfigService } from './config.service';
 
 // enum for watch status
 export type WatchStatus = 'saved' | 'watched';

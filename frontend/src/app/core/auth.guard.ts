@@ -1,7 +1,7 @@
 import { inject, PLATFORM_ID } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { CanActivateFn, Router } from '@angular/router';
-import { SupabaseService } from './supabase.service';
+import { SupabaseService } from './services/supabase.service';
 
 export const authGuard: CanActivateFn = async () => {
   const platformId = inject(PLATFORM_ID);

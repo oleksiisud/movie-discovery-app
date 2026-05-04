@@ -1,0 +1,122 @@
+<svg #svgContainer class="canvas">
+  <defs>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e8c97d" />
+      <stop offset="100%" stop-color="#c9983a" />
+    </linearGradient>
+
+    <filter id='noise' x='0%' y='0%' width='100%' height='100%'>
+      <feTurbulence type="fractalNoise" baseFrequency="0.005" numOctaves="3" stitchTiles="stitch" result="clouds" />
+      <feColorMatrix type="saturate" values="0" in="clouds" result="grayClouds" />
+      <feComponentTransfer in="grayClouds" result="contrastClouds">
+        <feFuncR type="linear" slope="2" intercept="-0.5" />
+        <feFuncG type="linear" slope="2" intercept="-0.5" />
+        <feFuncB type="linear" slope="2" intercept="-0.5" />
+      </feComponentTransfer>
+      <feBlend mode="multiply" in="SourceGraphic" in2="contrastClouds" />
+    </filter>
+  </defs>
+
+  <rect x="0" y="0" width="100%" height="100%" fill="var(--accent)" filter="url(#noise)" class="noise-rect" />
+</svg>
+
+<div class="search-wrapper" [class.closed]="!inputOpen" (click)="!inputOpen ? toggleInput() : null">
+  <input class="search-input" placeholder="Enter an element or movie idea..." type="text" [(ngModel)]="currentInput"
+    (keydown.enter)="addNodeFromInput()" [disabled]="!inputOpen">
+  <button class="add-btn" (click)="inputOpen ? addNodeFromInput() : toggleInput(); $event.stopPropagation()" autofocus>
+    <span class="material-symbols-rounded">add</span>
+  </button>
+</div>
+
+<button class="btn btn-ghost filter-btn glass" (click)="toggleFilters()" id="btn-toggle-filters">
+  <span class="material-symbols-rounded">filter_list</span>
+  @if (activeFilterCount > 0) {
+  <div class="badge">{{ activeFilterCount }}</div>
+  }
+</button>
+
+<div class="filter-panel glass" [class.open]="filtersOpen">
+  <h3>Filters</h3>
+
+  <div class="filter-group">
+    <label>Sort By</label>
+    <div class="custom-dropdown" [class.open]="openDropdown === 'sort'" (click)="toggleDropdown('sort', $event)">
+      <div class="dropdown-selected input">
+        {{ filters.sortBy === 'similarity' ? 'Best Match' : filters.sortBy === 'popularity' ? 'Popularity' : 'Highest
+        Rated' }}
+        <span class="material-symbols-rounded">expand_more</span>
+      </div>
+      <div class="dropdown-menu glass">
+        <div class="dropdown-item" [class.active]="filters.sortBy === 'similarity'" (click)="selectSort('similarity')">
+          Best Match</div>
+        <div class="dropdown-item" [class.active]="filters.sortBy === 'popularity'" (click)="selectSort('popularity')">
+          Popularity</div>
+        <div class="dropdown-item" [class.active]="filters.sortBy === 'vote_average'"
+          (click)="selectSort('vote_average')">Highest Rated</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="filter-group">
+    <label>Genres</label>
+    <div class="genre-grid">
+      @for (g of genres; track g.id) {
+      <div class="chip chip-clickable" [class.chip-gold]="isGenreSelected(g.id)"
+        [class.chip-secondary]="!isGenreSelected(g.id)" (click)="toggleGenre(g.id)">
+        {{ g.name }}
+      </div>
+      }
+    </div>
+  </div>
+
+  <div class="filter-group">
+    <label>Language</label>
+    <div class="custom-dropdown" [class.open]="openDropdown === 'language'"
+      (click)="toggleDropdown('language', $event)">
+      <div class="dropdown-selected input">
+        {{ getLanguageLabel(filters.language) }}
+        <span class="material-symbols-rounded">expand_more</span>
+      </div>
+      <div class="dropdown-menu glass">
+        <div class="dropdown-item" [class.active]="filters.language === null" (click)="selectLanguage(null)">Any</div>
+        @for (lang of languages; track lang.code) {
+        <div class="dropdown-item" [class.active]="filters.language === lang.code" (click)="selectLanguage(lang.code)">
+          {{ lang.label }}</div>
+        }
+      </div>
+    </div>
+  </div>
+
+  <div class="filter-group">
+    <label>Release Year <span class="range-value">{{ filters.yearFrom }} - {{ filters.yearTo }}</span></label>
+    <div class="dual-range-container">
+      <div class="dual-range" [style.--min-percent]="((filters.yearFrom - 1888) / (2030 - 1888)) * 100 + '%'"
+        [style.--max-percent]="((filters.yearTo - 1888) / (2030 - 1888)) * 100 + '%'">
+        <div class="range-track"></div>
+        <div class="range-highlight"></div>
+        <input type="range" min="1888" max="2030" [ngModel]="filters.yearFrom"
+          (ngModelChange)="filters.yearFrom = constrainYearFrom($event)">
+        <input type="range" min="1888" max="2030" [ngModel]="filters.yearTo"
+          (ngModelChange)="filters.yearTo = constrainYearTo($event)">
+      </div>
+    </div>
+  </div>
+
+  <div class="filter-group">
+    <label>Runtime (minutes) <span class="range-value">{{ filters.runtimeMin }} - {{ filters.runtimeMax
+        }}</span></label>
+    <div class="dual-range-container">
+      <div class="dual-range" [style.--min-percent]="((filters.runtimeMin - 0) / (300 - 0)) * 100 + '%'"
+        [style.--max-percent]="((filters.runtimeMax - 0) / (300 - 0)) * 100 + '%'">
+        <div class="range-track"></div>
+        <div class="range-highlight"></div>
+        <input type="range" min="0" max="300" [ngModel]="filters.runtimeMin"
+          (ngModelChange)="filters.runtimeMin = constrainRuntimeMin($event)">
+        <input type="range" min="0" max="300" [ngModel]="filters.runtimeMax"
+          (ngModelChange)="filters.runtimeMax = constrainRuntimeMax($event)">
+      </div>
+    </div>
+  </div>
+
+  <button class="btn btn-secondary" (click)="clearFilters()">Clear Filters</button>
+</div>

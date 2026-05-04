@@ -1,7 +1,7 @@
 import { Component, inject, HostListener } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { AsyncPipe } from '@angular/common';
-import { SupabaseService } from '../core/supabase.service';
+import { SupabaseService } from '../core/services/supabase.service';
 
 @Component({
   selector: 'app-navbar',

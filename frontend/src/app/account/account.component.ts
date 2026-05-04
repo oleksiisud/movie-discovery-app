@@ -1,13 +1,13 @@
 import { Component, inject } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
-import { SupabaseService } from '../core/supabase.service';
+import { SupabaseService } from '../core/services/supabase.service';
 
 @Component({
   selector: 'app-account',
   standalone: true,
   imports: [RouterLink],
   templateUrl: './account.component.html',
-  styleUrls: ['./account.component.css'],
+  styleUrl: './account.component.css',
 })
 export class AccountComponent {
   private readonly supabase = inject(SupabaseService);

@@ -1,11 +1,9 @@
 import { Routes } from '@angular/router';
-import { SearchComponent } from './search/search.component';
+import { GraphComponent } from './search/graph.component';
 import { authGuard } from './core/auth.guard';
-import { TestComponent } from './test.component';
 
 export const routes: Routes = [
-  { path: '', component: SearchComponent },
-  { path: 'test', component: TestComponent },
+  { path: '', component: GraphComponent },
   {
     path: 'login',
     loadComponent: () => import('./login/login.component').then(m => m.LoginComponent),

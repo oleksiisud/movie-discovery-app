@@ -2,7 +2,7 @@ import { Component, inject, OnInit, ChangeDetectorRef } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { SupabaseService, WatchlistEntry, WatchStatus } from '../core/supabase.service';
+import { SupabaseService, WatchlistEntry, WatchStatus } from '../core/services/supabase.service';
 import { environment } from '../../environments/environment';
 
 // Emotion definitions (display layer only — names must match Supabase rows)

@@ -58,11 +58,15 @@ def parse_filters(body: dict) -> tuple[dict, str | None]:
         filters["language"] = language.strip().lower() or None
 
     # year_from / year_to
-    year_from = body.get("year_from", None)
-    year_to = body.get("year_to", None)
+    try:
+        year_from = int(body.get("year_from")) if body.get("year_from") is not None else None
+        year_to = int(body.get("year_to")) if body.get("year_to") is not None else None
+    except (ValueError, TypeError):
+        return {}, "year_from and year_to must be integers."
+
     for key, val in (("year_from", year_from), ("year_to", year_to)):
         if val is not None:
-            if not isinstance(val, int) or val < 1888 or val > 2100:
+            if val < 1888 or val > 2100:
                 return {}, f"{key} must be an integer year between 1888 and 2100."
 
     if year_from is not None and year_to is not None and year_from > year_to:
@@ -74,11 +78,15 @@ def parse_filters(body: dict) -> tuple[dict, str | None]:
         filters["year_to"] = year_to
 
     # runtime_min / runtime_max
-    runtime_min = body.get("runtime_min", None)
-    runtime_max = body.get("runtime_max", None)
+    try:
+        runtime_min = int(body.get("runtime_min")) if body.get("runtime_min") is not None else None
+        runtime_max = int(body.get("runtime_max")) if body.get("runtime_max") is not None else None
+    except (ValueError, TypeError):
+        return {}, "runtime_min and runtime_max must be integers."
+
     for key, val in (("runtime_min", runtime_min), ("runtime_max", runtime_max)):
         if val is not None:
-            if not isinstance(val, int) or val < 0:
+            if val < 0:
                 return {}, f"{key} must be a non-negative integer."
 
     if runtime_min is not None and runtime_max is not None and runtime_min > runtime_max:
