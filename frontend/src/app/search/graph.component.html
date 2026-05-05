@@ -22,7 +22,7 @@
 
 <div class="search-wrapper" [class.closed]="!inputOpen" (click)="!inputOpen ? toggleInput() : null">
   <input class="search-input" placeholder="Enter an element or movie idea..." type="text" [(ngModel)]="currentInput"
-    (keydown.enter)="addNodeFromInput()" [disabled]="!inputOpen">
+    (keydown.enter)="addNodeFromInput()" [disabled]="!inputOpen" autofocus>
   <button class="add-btn" (click)="inputOpen ? addNodeFromInput() : toggleInput(); $event.stopPropagation()" autofocus>
     <span class="material-symbols-rounded">add</span>
   </button>
@@ -120,3 +120,50 @@
 
   <button class="btn btn-secondary" (click)="clearFilters()">Clear Filters</button>
 </div>
+
+@if (isMenuVisible) {
+<div class="custom-context-menu glass" [style.top.px]="menuTop" [style.left.px]="menuLeft"
+  (click)="$event.stopPropagation()">
+  <div class="menu-header">
+    <span class="node-name">{{ selectedNode?.name }}</span>
+    <span class="node-type-badge">{{ selectedNode?.type }}</span>
+  </div>
+  <div class="menu-divider"></div>
+  <ul>
+    @if (selectedNode?.type === 'movie') {
+    <li (click)="onMenuAction('Add to Watchlist')">
+      <span class="material-symbols-rounded">bookmark</span>
+      <span>{{ (selectedNode?.movieData ? watchlistMap[selectedNode!.movieData!.id] : 'Invalid') === 'saved' ? 'Saved' :
+        'Add to Watchlist' }}</span>
+    </li>
+    <li (click)="onMenuAction('Mark as Seen')">
+      <span class="material-symbols-rounded">visibility</span>
+      <span>{{ (selectedNode?.movieData ? watchlistMap[selectedNode!.movieData!.id] : 'Invalid') === 'watched' ? 'Seen'
+        : 'Mark as Seen' }}</span>
+    </li>
+    }
+
+    @if (selectedNode?.type !== 'hub') {
+    <li (click)="onMenuAction('Duplicate')">
+      <span class="material-symbols-rounded">content_copy</span>
+      <span>Duplicate</span>
+    </li>
+    @if (selectedNode?.stationId) {
+    <li (click)="onMenuAction('Unbind')">
+      <span class="material-symbols-rounded">link_off</span>
+      <span>Unbind</span>
+    </li>
+    }
+    <li (click)="onMenuAction('Delete')" class="menu-item-danger">
+      <span class="material-symbols-rounded">delete</span>
+      <span>Delete</span>
+    </li>
+    } @else {
+    <li (click)="onMenuAction('Unbind All')" class="menu-item-danger">
+      <span class="material-symbols-rounded">link_off</span>
+      <span>Unbind All</span>
+    </li>
+    }
+  </ul>
+</div>
+}

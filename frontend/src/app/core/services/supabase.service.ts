@@ -18,6 +18,7 @@ export interface WatchlistMovie {
   overview: string;
   release_year: number;
   tmdb_id: number;
+  poster_path: string | null;
 }
 
 export interface WatchlistEntry {
@@ -108,7 +109,8 @@ export class SupabaseService {
           title,
           overview,
           release_year,
-          tmdb_id
+          tmdb_id,
+          poster_path
         )
       `)
       .eq('user_id', this.currentUser.id)

@@ -2,8 +2,9 @@ import { Component, ElementRef, OnInit, ViewChild, NgZone, HostListener, inject,
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
+import { Router } from '@angular/router';
 import { environment } from '../../environments/environment';
-import { SupabaseService, Genre } from '../core/services/supabase.service';
+import { SupabaseService, Genre, WatchStatus } from '../core/services/supabase.service';
 import * as d3 from 'd3';
 
 export interface FilterState {
@@ -74,11 +75,17 @@ export class GraphComponent implements OnInit {
     private readonly http = inject(HttpClient);
     private readonly cdr = inject(ChangeDetectorRef);
     private readonly supabase = inject(SupabaseService);
+    private readonly router = inject(Router);
 
     inputOpen = false;
     filtersOpen = false;
     currentInput = '';
     isLoading = false;
+    isMenuVisible = false;
+    menuTop = 0;
+    menuLeft = 0;
+    selectedNode: WebNode | null = null;
+    watchlistMap: Record<number, WatchStatus> = {};
 
     filters: FilterState = {
         genreIds: [],
@@ -115,6 +122,24 @@ export class GraphComponent implements OnInit {
             this.genres = genres;
             this.cdr.markForCheck();
         });
+
+        this.supabase.session$.subscribe(session => {
+            if (session) {
+                this.loadWatchlistMap();
+            } else {
+                this.watchlistMap = {};
+                this.cdr.markForCheck();
+            }
+        });
+    }
+
+    private async loadWatchlistMap(): Promise<void> {
+        try {
+            this.watchlistMap = await this.supabase.getWatchlistMap();
+            this.cdr.markForCheck();
+        } catch (err) {
+            console.error('Failed to load watchlist map:', err);
+        }
     }
 
     @HostListener('window:resize')
@@ -136,6 +161,9 @@ export class GraphComponent implements OnInit {
         const target = event.target as HTMLElement;
         if (!target.closest('.custom-dropdown')) {
             this.openDropdown = null;
+        }
+        if (this.isMenuVisible) {
+            this.closeMenu();
         }
     }
 
@@ -210,6 +238,87 @@ export class GraphComponent implements OnInit {
         this.nodes.push(node);
         this.currentInput = '';
         this.updateGraph();
+    }
+
+    onMenuAction(action: string): void {
+        if (!this.selectedNode) return;
+
+        switch (action) {
+            case 'Duplicate':
+                const newNode: WebNode = {
+                    ...this.selectedNode,
+                    id: this.generateId(),
+                    x: (this.selectedNode.x || 0) + 30,
+                    y: (this.selectedNode.y || 0) + 30,
+                    fx: undefined,
+                    fy: undefined,
+                    vx: 0,
+                    vy: 0,
+                    stationId: undefined // Don't duplicate station membership
+                };
+                this.nodes.push(newNode);
+                break;
+
+            case 'Delete':
+                const idToDelete = this.selectedNode.id;
+                this.nodes = this.nodes.filter(n => n.id !== idToDelete);
+                this.links = this.links.filter(l =>
+                    this.getLinkId(l.source) !== idToDelete &&
+                    this.getLinkId(l.target) !== idToDelete
+                );
+                break;
+
+            case 'Unbind All':
+                const hubId = this.selectedNode.id;
+                // Release nodes
+                this.nodes.forEach(n => {
+                    if (n.stationId === hubId) {
+                        n.stationId = undefined;
+                    }
+                });
+                // Remove all links connected to hub
+                this.links = this.links.filter(l =>
+                    this.getLinkId(l.source) !== hubId &&
+                    this.getLinkId(l.target) !== hubId
+                );
+                // Remove hub
+                this.nodes = this.nodes.filter(n => n.id !== hubId);
+                break;
+
+            case 'Unbind':
+                if (this.selectedNode.stationId) {
+                    const currentHubId = this.selectedNode.stationId;
+                    const nodeId = this.selectedNode.id;
+                    this.selectedNode.stationId = undefined;
+                    this.links = this.links.filter(l => {
+                        const s = this.getLinkId(l.source);
+                        const t = this.getLinkId(l.target);
+                        return !((s === nodeId && t === currentHubId) || (s === currentHubId && t === nodeId));
+                    });
+                }
+                break;
+
+            case 'Add to Watchlist':
+                if (this.selectedNode?.movieData) {
+                    this.toggleWatchlist(this.selectedNode.movieData, 'saved');
+                }
+                break;
+
+            case 'Mark as Seen':
+                if (this.selectedNode?.movieData) {
+                    this.toggleWatchlist(this.selectedNode.movieData, 'watched');
+                }
+                break;
+        }
+
+        this.updateGraph();
+        this.closeMenu();
+    }
+
+    closeMenu(): void {
+        this.isMenuVisible = false;
+        this.selectedNode = null;
+        this.cdr.markForCheck();
     }
 
     getActiveClusterInputs(hubId: string): string[] {
@@ -433,6 +542,17 @@ export class GraphComponent implements OnInit {
             .on('click', (event: MouseEvent, d: WebNode) => {
                 if (event.defaultPrevented) return;
                 if (d.type === 'hub') this.triggerMix(d);
+            })
+            .on('contextmenu', (event: MouseEvent, d: WebNode) => {
+                event.preventDefault();
+                event.stopPropagation();
+                this.ngZone.run(() => {
+                    this.selectedNode = d;
+                    this.menuLeft = d.x! - 90;
+                    this.menuTop = d.y! + 22;
+                    this.isMenuVisible = true;
+                    this.cdr.markForCheck();
+                });
             });
 
         nodeEnter.each((d, i, nodes) => {
@@ -452,6 +572,7 @@ export class GraphComponent implements OnInit {
 
             if (d.type === 'movie') {
                 const isCollapsed = !!d.stationId;
+                const m = d.movieData;
 
                 el.select('rect')
                     .transition().duration(300)
@@ -471,6 +592,7 @@ export class GraphComponent implements OnInit {
                     .transition().duration(300)
                     .style('height', isCollapsed ? '0px' : '210px')
                     .style('opacity', isCollapsed ? '0' : '1');
+
             } else if (d.type === 'hub') {
                 // Update loading state
                 if (d.isLoading) {
@@ -551,6 +673,7 @@ export class GraphComponent implements OnInit {
         const posterH = 210;
 
         const m = d.movieData;
+        console.log(m!);
 
         el.append('rect')
             .attr('width', w).attr('height', h)
@@ -574,25 +697,31 @@ export class GraphComponent implements OnInit {
             .style('overflow', 'hidden')
             .style('margin', '0');
 
-        const posterDiv = card.append('xhtml:div')
-            .attr('class', 'movie-poster')
-            .style('width', '100%')
-            .style('height', posterH + 'px')
-            .style('background', 'rgba(255,255,255,0.05)')
-            .style('border-bottom', 'var(--glass-border)')
-            .style('background-size', 'cover')
-            .style('background-position', 'center');
-
-        if (m && m.poster_path) {
-            posterDiv.style('background-image', `url(https://image.tmdb.org/t/p/w500${m.poster_path})`);
+        if (m!.poster_path) {
+            const posterDiv = card.append('xhtml:div')
+                .attr('class', 'movie-poster')
+                .style('width', '100%')
+                .style('height', posterH + 'px')
+                .style('background-image', `url(https://image.tmdb.org/t/p/w500${m!.poster_path})`)
+                .style('background-size', 'cover')
+                .style('border-bottom', '1px solid rgba(255,255,255,0.1)');
+        } else {
+            const posterDiv = card.append('xhtml:div')
+                .attr('class', 'movie-poster')
+                .style('width', '100%')
+                .style('height', posterH + 'px')
+                .style('background-image', `url(https://critics.io/img/movies/poster-placeholder.png)`)
+                .style('background-size', 'cover')
+                .style('border-bottom', '1px solid rgba(255,255,255,0.1)');
         }
+
 
         card.append('xhtml:div')
             .style('flex', '1')
             .style('display', 'flex')
             .style('align-items', 'center')
             .style('justify-content', 'center')
-            .style('color', 'var(--teal)')
+            .style('color', 'var(--accent)')
             .style('font-family', 'var(--font-ui)')
             .style('font-size', '14px')
             .style('font-weight', '600')
@@ -932,7 +1061,7 @@ export class GraphComponent implements OnInit {
 
     spawnMovieNode(hub: WebNode, movie: Movie) {
         const elements = this.nodes.filter(n => n.stationId === hub.id);
-
+        console.log('Movie:', movie);
         this.nodes = this.nodes.filter(n => n.id !== hub.id);
         this.links = this.links.filter(l => {
             const s = this.getLinkId(l.source);
@@ -972,5 +1101,28 @@ export class GraphComponent implements OnInit {
         setTimeout(() => {
             this.simulation.velocityDecay(0.8);
         }, 500);
+    }
+
+    async toggleWatchlist(movie: Movie, status: WatchStatus): Promise<void> {
+        if (!this.supabase.currentUser) {
+            this.router.navigate(['/account']);
+            return;
+        }
+
+        try {
+            if (this.watchlistMap[movie.id] === status) {
+                // Clicking the active status removes it
+                await this.supabase.removeFromWatchlist(movie.id);
+                const updated = { ...this.watchlistMap };
+                delete updated[movie.id];
+                this.watchlistMap = updated;
+            } else {
+                await this.supabase.upsertWatchlist(movie.id, status);
+                this.watchlistMap = { ...this.watchlistMap, [movie.id]: status };
+            }
+            this.cdr.markForCheck();
+        } catch (err) {
+            console.error('Watchlist error:', err);
+        }
     }
 }
