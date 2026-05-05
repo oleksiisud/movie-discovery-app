@@ -49,6 +49,41 @@ export class LoginComponent {
     }
   }
 
+  async forgotPassword(): Promise<void> {
+    if (!this.email) {
+      this.error = 'Please enter your email address first.';
+      return;
+    }
+
+    this.loading = true;
+    this.error = '';
+    this.successMessage = '';
+
+    try {
+      const { error } = await this.supabase.resetPassword(this.email);
+      if (error) throw error;
+      this.successMessage = 'Password reset link sent! Check your email.';
+    } catch (err: any) {
+      this.error = err?.message ?? 'Failed to send reset link.';
+    } finally {
+      this.loading = false;
+      this.cdr.markForCheck();
+    }
+  }
+
+  async signInWithGoogle(): Promise<void> {
+    this.loading = true;
+    this.error = '';
+    try {
+      const { error } = await this.supabase.signInWithGoogle();
+      if (error) throw error;
+    } catch (err: any) {
+      this.error = err?.message ?? 'Failed to sign in with Google.';
+      this.loading = false;
+      this.cdr.markForCheck();
+    }
+  }
+
   switchMode(m: 'signin' | 'signup'): void {
     this.mode = m;
     this.error = '';

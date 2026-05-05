@@ -89,6 +89,21 @@ export class SupabaseService {
     return this.client.auth.signUp({ email, password });
   }
 
+  async resetPassword(email: string) {
+    return this.client.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + '/reset-password',
+    });
+  }
+
+  async signInWithGoogle() {
+    return this.client.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin,
+      },
+    });
+  }
+
   async signOut() {
     return this.client.auth.signOut();
   }

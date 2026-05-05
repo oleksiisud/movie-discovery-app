@@ -178,6 +178,7 @@ def serialize_movie(m: dict) -> dict:
         "runtime":           m.get("runtime"),
         "original_language": m.get("original_language"),
         "similarity":        round(m["similarity"], 4),
+        "poster_path":       m.get("poster_path"),
     }
 
 
