@@ -21,9 +21,9 @@
 </svg>
 
 <div class="search-wrapper" [class.closed]="!inputOpen" (click)="!inputOpen ? toggleInput() : null">
-  <input class="search-input" placeholder="Enter an element or movie idea..." type="text" [(ngModel)]="currentInput"
-    (keydown.enter)="addNodeFromInput()" [disabled]="!inputOpen" autofocus>
-  <button class="add-btn" (click)="inputOpen ? addNodeFromInput() : toggleInput(); $event.stopPropagation()" autofocus>
+  <input class="search-input" #searchInput placeholder="Enter an element or movie idea..." type="text"
+    [(ngModel)]="currentInput" (keydown.enter)="addNodeFromInput()" [disabled]="!inputOpen" autofocus>
+  <button class="add-btn" (click)="toggleInput()" autofocus>
     <span class="material-symbols-rounded">add</span>
   </button>
 </div>

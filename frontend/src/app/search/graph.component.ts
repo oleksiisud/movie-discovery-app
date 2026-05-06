@@ -71,6 +71,7 @@ interface WebLink extends d3.SimulationLinkDatum<WebNode> {
 })
 export class GraphComponent implements OnInit {
     @ViewChild('svgContainer', { static: true }) svgContainer!: ElementRef;
+    @ViewChild('searchInput') searchInput!: ElementRef;
 
     private readonly http = inject(HttpClient);
     private readonly cdr = inject(ChangeDetectorRef);
@@ -213,7 +214,16 @@ export class GraphComponent implements OnInit {
     }
 
     toggleInput() {
-        this.inputOpen = !this.inputOpen;
+        if (!this.inputOpen) {
+            this.inputOpen = true;
+            setTimeout(() => {
+                this.searchInput.nativeElement.focus();
+            });
+        } else if (this.currentInput.trim().length === 0) {
+            this.inputOpen = false;
+        } else {
+            this.addNodeFromInput();
+        }
     }
 
     toggleFilters() {
@@ -270,19 +280,27 @@ export class GraphComponent implements OnInit {
 
             case 'Unbind All':
                 const hubId = this.selectedNode.id;
+                const elementIdsInHub = new Set(this.nodes.filter(n => n.stationId === hubId).map(n => n.id));
+
                 // Release nodes
                 this.nodes.forEach(n => {
                     if (n.stationId === hubId) {
                         n.stationId = undefined;
                     }
                 });
-                // Remove all links connected to hub
-                this.links = this.links.filter(l =>
-                    this.getLinkId(l.source) !== hubId &&
-                    this.getLinkId(l.target) !== hubId
-                );
+
+                // Remove all links connected to hub OR ring links between elements of this hub
+                this.links = this.links.filter(l => {
+                    const s = this.getLinkId(l.source);
+                    const t = this.getLinkId(l.target);
+                    const isConnectedToHub = s === hubId || t === hubId;
+                    const isRingLinkInHub = (l.type === 'ring') && elementIdsInHub.has(s) && elementIdsInHub.has(t);
+                    return !isConnectedToHub && !isRingLinkInHub;
+                });
+
                 // Remove hub
                 this.nodes = this.nodes.filter(n => n.id !== hubId);
+                this.cdr.markForCheck();
                 break;
 
             case 'Unbind':
@@ -290,12 +308,36 @@ export class GraphComponent implements OnInit {
                     const currentHubId = this.selectedNode.stationId;
                     const nodeId = this.selectedNode.id;
                     this.selectedNode.stationId = undefined;
+
+                    // Remove links between this node and the hub
                     this.links = this.links.filter(l => {
                         const s = this.getLinkId(l.source);
                         const t = this.getLinkId(l.target);
                         return !((s === nodeId && t === currentHubId) || (s === currentHubId && t === nodeId));
                     });
+
+                    // Check if hub still has enough nodes
+                    const remainingInHub = this.nodes.filter(n => n.stationId === currentHubId);
+                    if (remainingInHub.length < 2) {
+                        const remainingIds = new Set(remainingInHub.map(n => n.id));
+                        // Dissolve the hub
+                        remainingInHub.forEach(n => n.stationId = undefined);
+                        this.nodes = this.nodes.filter(n => n.id !== currentHubId);
+
+                        // Remove all links related to this hub and its ring
+                        this.links = this.links.filter(l => {
+                            const s = this.getLinkId(l.source);
+                            const t = this.getLinkId(l.target);
+                            const isConnectedToHub = s === currentHubId || t === currentHubId;
+                            const isRingLinkInHub = (l.type === 'ring') && (remainingIds.has(s) || remainingIds.has(t) || s === nodeId || t === nodeId);
+                            return !isConnectedToHub && !isRingLinkInHub;
+                        });
+                    } else {
+                        // Rebuild structure for remaining nodes
+                        this.rebuildHubStructure(currentHubId);
+                    }
                 }
+                this.cdr.markForCheck();
                 break;
 
             case 'Add to Watchlist':
@@ -406,7 +448,7 @@ export class GraphComponent implements OnInit {
     }
 
     getRadius(n: number): number {
-        return Math.max(130, (n * 140) / (2 * Math.PI));
+        return Math.max(160, (n * 180) / (2 * Math.PI));
     }
 
     rectCollide() {
@@ -420,8 +462,8 @@ export class GraphComponent implements OnInit {
                 const a = nodes[i];
                 const aIsHub = a.type === 'hub';
                 const aIsMovie = a.type === 'movie' && !a.stationId;
-                const aW = aIsHub ? 35 : aIsMovie ? 70 : 56;
-                const aH = aIsHub ? 35 : aIsMovie ? 130 : 18;
+                const aW = aIsHub ? 35 : 80;
+                const aH = aIsHub ? 35 : aIsMovie ? 130 : 22;
 
                 for (let j = i + 1; j < len; j++) {
                     const b = nodes[j];
@@ -430,8 +472,8 @@ export class GraphComponent implements OnInit {
                     if (aIsHub && bIsHub) continue;
 
                     const bIsMovie = b.type === 'movie' && !b.stationId;
-                    const bW = bIsHub ? 35 : bIsMovie ? 70 : 56;
-                    const bH = bIsHub ? 35 : bIsMovie ? 130 : 18;
+                    const bW = bIsHub ? 35 : 80;
+                    const bH = bIsHub ? 35 : bIsMovie ? 130 : 22;
 
                     let dx = (a.x || 0) - (b.x || 0);
                     let dy = (a.y || 0) - (b.y || 0);
@@ -494,8 +536,8 @@ export class GraphComponent implements OnInit {
                     const sNode = typeof d.source === 'string' ? this.nodeMap.get(d.source) : d.source;
                     const tNode = typeof d.target === 'string' ? this.nodeMap.get(d.target) : d.target;
 
-                    if (sNode?.type === 'movie' || tNode?.type === 'movie') return 380;
-                    return 140;
+                    if (sNode?.type === 'movie' || tNode?.type === 'movie') return 420;
+                    return 180;
                 })
                 .strength(d => d.type === 'loose' ? 0.5 : 1))
             .on('tick', () => this.ticked());
@@ -528,6 +570,9 @@ export class GraphComponent implements OnInit {
             .style('filter', d => d.type === 'ring' ? 'drop-shadow(0 0 12px var(--accent-glow))' : 'none');
 
         linkElems.exit().remove();
+
+        // Refresh the selection for ticked()
+        this.linkElements = this.linkGroup.selectAll<SVGLineElement, WebLink>('line');
     }
 
     private renderNodes() {
@@ -576,16 +621,16 @@ export class GraphComponent implements OnInit {
 
                 el.select('rect')
                     .transition().duration(300)
-                    .attr('width', isCollapsed ? 120 : 140)
+                    .attr('width', 160)
                     .attr('height', isCollapsed ? 44 : 260)
-                    .attr('x', isCollapsed ? -60 : -70)
+                    .attr('x', -80)
                     .attr('y', isCollapsed ? -22 : -130);
 
                 el.select('foreignObject')
                     .transition().duration(300)
-                    .attr('width', isCollapsed ? 120 : 140)
+                    .attr('width', 160)
                     .attr('height', isCollapsed ? 44 : 260)
-                    .attr('x', isCollapsed ? -60 : -70)
+                    .attr('x', -80)
                     .attr('y', isCollapsed ? -22 : -130);
 
                 el.select('.movie-poster')
@@ -639,14 +684,14 @@ export class GraphComponent implements OnInit {
 
     private renderElementNode(el: d3.Selection<SVGGElement, unknown, null, undefined>, d: WebNode) {
         el.append('rect')
-            .attr('width', 120).attr('height', 44)
+            .attr('width', 160).attr('height', 44)
             .attr('rx', 12)
-            .attr('x', -60).attr('y', -22)
+            .attr('x', -80).attr('y', -22)
             .attr('fill', 'transparent');
 
         const fo = el.append('foreignObject')
-            .attr('width', 120).attr('height', 44)
-            .attr('x', -60).attr('y', -22)
+            .attr('width', 160).attr('height', 44)
+            .attr('x', -80).attr('y', -22)
             .style('pointer-events', 'none');
 
         fo.append('xhtml:div')
@@ -668,7 +713,7 @@ export class GraphComponent implements OnInit {
     }
 
     private renderMovieNode(el: d3.Selection<SVGGElement, unknown, null, undefined>, d: WebNode) {
-        const w = 140;
+        const w = 160;
         const h = 260;
         const posterH = 210;
 
@@ -777,7 +822,7 @@ export class GraphComponent implements OnInit {
         }
 
         for (const n of this.nodes) {
-            const rX = n.type === 'hub' ? 35 : (n.type === 'movie' && !n.stationId) ? 70 : 60;
+            const rX = n.type === 'hub' ? 35 : 80;
             const rY = n.type === 'hub' ? 35 : (n.type === 'movie' && !n.stationId) ? 130 : 22;
 
             if (n.x !== undefined && n.y !== undefined) {
@@ -804,26 +849,35 @@ export class GraphComponent implements OnInit {
 
         let potentialLinksData: { source: WebNode, target: WebNode }[] = [];
         if (this.activeDragNode) {
-            const thresholdSq = 140 * 140;
             const myIds = this.getClusterIds(this.activeDragNode);
 
             for (const targetNode of this.nodes) {
                 if (myIds.has(targetNode.id)) continue;
 
                 let closestMyNode: WebNode | null = null;
-                let minDistSq = Infinity;
+                let minArea = Infinity;
 
                 for (const myId of myIds) {
                     const myNode = this.nodeMap.get(myId);
                     if (!myNode) continue;
 
-                    const dx = (myNode.x || 0) - (targetNode.x || 0);
-                    const dy = (myNode.y || 0) - (targetNode.y || 0);
-                    const distSq = dx * dx + dy * dy;
+                    const dx = Math.abs((myNode.x || 0) - (targetNode.x || 0));
+                    const dy = Math.abs((myNode.y || 0) - (targetNode.y || 0));
 
-                    if (distSq < thresholdSq && distSq < minDistSq) {
-                        minDistSq = distSq;
-                        closestMyNode = myNode;
+                    const isMovieA = myNode.type === 'movie' && !myNode.stationId;
+                    const isMovieB = targetNode.type === 'movie' && !targetNode.stationId;
+                    const isHubA = myNode.type === 'hub';
+                    const isHubB = targetNode.type === 'hub';
+
+                    const threshX = (isHubA ? 35 : 80) + (isHubB ? 35 : 80) + 60;
+                    const threshY = (isHubA ? 35 : isMovieA ? 130 : 22) + (isHubB ? 35 : isMovieB ? 130 : 22) + 60;
+
+                    if (dx < threshX && dy < threshY) {
+                        const area = dx * dy;
+                        if (area < minArea) {
+                            minArea = area;
+                            closestMyNode = myNode;
+                        }
                     }
                 }
 
@@ -904,7 +958,6 @@ export class GraphComponent implements OnInit {
     }
 
     checkProximity(draggedNode: WebNode) {
-        const thresholdSq = 140 * 140;
         const myIds = this.getClusterIds(draggedNode);
 
         let targetHubId: string | null = null;
@@ -919,10 +972,18 @@ export class GraphComponent implements OnInit {
                 const myNode = this.nodeMap.get(myId);
                 if (!myNode) continue;
 
-                const dx = (myNode.x || 0) - (targetNode.x || 0);
-                const dy = (myNode.y || 0) - (targetNode.y || 0);
+                const dx = Math.abs((myNode.x || 0) - (targetNode.x || 0));
+                const dy = Math.abs((myNode.y || 0) - (targetNode.y || 0));
 
-                if (dx * dx + dy * dy < thresholdSq) {
+                const isMovieA = myNode.type === 'movie' && !myNode.stationId;
+                const isMovieB = targetNode.type === 'movie' && !targetNode.stationId;
+                const isHubA = myNode.type === 'hub';
+                const isHubB = targetNode.type === 'hub';
+
+                const threshX = (isHubA ? 35 : 80) + (isHubB ? 35 : 80) + 60;
+                const threshY = (isHubA ? 35 : isMovieA ? 130 : 22) + (isHubB ? 35 : isMovieB ? 130 : 22) + 60;
+
+                if (dx < threshX && dy < threshY) {
                     isClose = true;
                     break;
                 }

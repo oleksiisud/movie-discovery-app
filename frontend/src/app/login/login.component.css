@@ -20,25 +20,6 @@
   animation: fadeUp 0.8s var(--ease-out-expo) forwards;
 }
 
-.logo {
-  font-family: var(--font-display);
-  font-size: clamp(3rem, 10vw, 4.5rem);
-  font-weight: 700;
-  letter-spacing: 0.15em;
-  margin: 0;
-  line-height: 1;
-}
-
-.tagline {
-  margin: 0.75rem 0 0;
-  color: var(--text-2);
-  font-size: 0.95rem;
-  font-weight: 400;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  opacity: 0.8;
-}
-
 /* Auth Card */
 .auth-card {
   padding: 2rem;

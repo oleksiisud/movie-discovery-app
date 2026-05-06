@@ -19,6 +19,12 @@ export interface WatchlistMovie {
   release_year: number;
   tmdb_id: number;
   poster_path: string | null;
+  vote_average: number | null;
+  popularity: number | null;
+  runtime: number | null;
+  movie_genres?: {
+    genres: Genre;
+  }[];
 }
 
 export interface WatchlistEntry {
@@ -108,6 +114,10 @@ export class SupabaseService {
     return this.client.auth.signOut();
   }
 
+  async updateUser(data: { password?: string; data?: any }) {
+    return this.client.auth.updateUser(data);
+  }
+
   // Watchlist
 
   async getWatchlist(): Promise<WatchlistEntry[]> {
@@ -125,14 +135,21 @@ export class SupabaseService {
           overview,
           release_year,
           tmdb_id,
-          poster_path
+          poster_path,
+          vote_average,
+          popularity,
+          runtime,
+          movie_genres (
+            genres (
+              id,
+              name
+            )
+          )
         )
       `)
       .eq('user_id', this.currentUser.id)
       .order('created_at', { ascending: false });
     if (error) throw error;
-
-    console.log('Raw watchlist data:', data);
 
     const entries = (data ?? []).map((row: any) => ({
       ...row,

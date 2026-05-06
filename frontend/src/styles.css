@@ -86,7 +86,8 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-ui);
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -154,6 +155,7 @@ body {
     opacity var(--dur-base);
   white-space: nowrap;
   user-select: none;
+  text-decoration: none;
 }
 
 .btn:disabled {
@@ -372,6 +374,26 @@ body {
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
+}
+
+/* Misc Classes */
+.logo {
+  font-family: var(--font-display);
+  font-size: clamp(3rem, 10vw, 4.5rem);
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  margin: 0;
+  line-height: 1;
+}
+
+.tagline {
+  margin: 0.75rem 0 0;
+  color: var(--text-2);
+  font-size: 0.95rem;
+  font-weight: 400;
+  font-family: var(--font-ui);
+  letter-spacing: 0.1em;
+  opacity: 0.8;
 }
 
 /* Keyframe Library */
