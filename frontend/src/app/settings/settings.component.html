@@ -1,0 +1,136 @@
+<div class="page settings-page">
+
+  <header class="page-header">
+    <h1 class="logo gradient-text">SETTINGS</h1>
+    <p class="tagline">Manage your account preferences</p>
+  </header>
+
+  <div class="settings-content">
+
+    @if (message) {
+    <div class="alert alert-success glass">
+      <span class="material-symbols-rounded">check_circle</span>
+      {{ message }}
+    </div>
+    }
+
+    @if (error) {
+    <div class="alert alert-error glass">
+      <span class="material-symbols-rounded">error</span>
+      {{ error }}
+    </div>
+    }
+
+    <!-- Profile Section -->
+    <section class="settings-section profile-card glass">
+      <div class="profile-main">
+        <div class="avatar-edit-container" (click)="fileInput.click()">
+          <div class="avatar-circle">
+            @if (avatarPreview) {
+            <img [src]="avatarPreview" alt="Avatar" class="avatar-img" />
+            } @else {
+            <span class="avatar-placeholder">{{ getUserInitials() }}</span>
+            }
+          </div>
+          <div class="avatar-overlay">
+            <span class="material-symbols-rounded">edit</span>
+          </div>
+          <input #fileInput type="file" (change)="onFileSelected($event)" accept="image/*" hidden />
+        </div>
+
+        <div class="profile-info">
+          @if (!isEditingName) {
+          <div class="display-name-group">
+            <h2 class="display-name">{{ username || 'Set display name' }}</h2>
+            <button class="btn btn-icon btn-secondary" (click)="isEditingName = true" title="Edit name">
+              <span class="material-symbols-rounded">edit</span>
+            </button>
+          </div>
+          } @else {
+          <div class="display-name-edit">
+            <input type="text" [(ngModel)]="username" placeholder="Username" (keyup.enter)="updateProfile()"
+              autofocus />
+            <div class="edit-actions">
+              <button class="btn btn-icon btn-success" (click)="updateProfile()" [disabled]="loading">
+                <span class="material-symbols-rounded">check</span>
+              </button>
+              <button class="btn btn-icon btn-danger" (click)="isEditingName = false">
+                <span class="material-symbols-rounded">close</span>
+              </button>
+            </div>
+          </div>
+          }
+          <p class="user-email-muted">{{ user?.email }}</p>
+
+          <div class="profile-actions">
+            <p class="size-warning">
+              <span class="material-symbols-rounded">info</span>
+              Recommended size: 256x256px
+            </p>
+            @if (avatarPreview) {
+            <button class="btn btn-danger " (click)="removeAvatar()" [disabled]="loading">
+              <span class="material-symbols-rounded">delete</span>
+              Remove Avatar
+            </button>
+            }
+          </div>
+        </div>
+      </div>
+
+      @if (selectedFile) {
+      <div class="pending-actions">
+        <p class="pending-text">New profile picture selected</p>
+        <button class="btn btn-primary" (click)="updateProfile()" [disabled]="loading">
+          {{ loading ? 'Uploading...' : 'Save Changes' }}
+        </button>
+      </div>
+      }
+    </section>
+
+    <!-- Security Section -->
+    <section class="settings-section glass">
+      <h2 class="section-title">Security</h2>
+      <div class="form-group">
+        <label for="newPassword">New Password</label>
+        <input type="password" id="newPassword" [(ngModel)]="newPassword" placeholder="••••••••" />
+      </div>
+      <div class="form-group">
+        <label for="confirmPassword">Confirm Password</label>
+        <input type="password" id="confirmPassword" [(ngModel)]="confirmPassword" placeholder="••••••••" />
+      </div>
+      <button class="btn btn-primary" (click)="updatePassword()" [disabled]="loading || !newPassword">
+        {{ loading ? 'Saving...' : 'Change Password' }}
+      </button>
+    </section>
+
+    <!-- Integrations Section -->
+    <section class="settings-section glass">
+      <h2 class="section-title">Integrations</h2>
+      <div class="integration-item">
+        <div class="integration-info">
+          <img src="https://www.google.com/favicon.ico" alt="Google" class="integration-icon" />
+          <div class="integration-text">
+            <h3>Google Account</h3>
+            <p>{{ isGoogleLinked ? 'Connected' : 'Not connected' }}</p>
+          </div>
+        </div>
+        @if (!isGoogleLinked) {
+        <button class="btn btn-primary" (click)='linkGoogle()'>Connect</button>
+        } @else {
+        <span class="status-connected">
+          <span class="material-symbols-rounded">check_circle</span>
+          Connected
+        </span>
+        }
+      </div>
+    </section>
+
+    <!-- Account Details -->
+    <section class="settings-section info-section">
+      <p>Email: <strong>{{ user?.email }}</strong></p>
+      <p>User ID: <code class="user-id">{{ user?.id }}</code></p>
+    </section>
+
+  </div>
+
+</div>

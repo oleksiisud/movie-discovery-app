@@ -84,7 +84,7 @@
   width: 32px;
   height: 32px;
   border-radius: var(--radius-md);
-  background: var(--grad-gold);
+  background: var(--grad-accent);
   border: none;
   display: flex;
   align-items: center;

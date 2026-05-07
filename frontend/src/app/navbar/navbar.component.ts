@@ -16,7 +16,16 @@ export class NavbarComponent {
   readonly session$ = this.supabase.session$;
   isDropdownOpen = false;
 
+  getAvatarUrl(): string | null {
+    const path = this.supabase.currentUser?.user_metadata?.['avatar_url'];
+    return path ? this.supabase.getPublicUrl(path) : null;
+  }
+
   getUserInitials(): string {
+    const displayName = this.supabase.currentUser?.user_metadata?.['display_name'];
+    if (displayName && !displayName.includes('@')) {
+      return displayName.slice(0, 2).toUpperCase();
+    }
     const email = this.supabase.currentUser?.email ?? '';
     if (!email) return '';
     return email.slice(0, 2).toUpperCase();

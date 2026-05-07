@@ -29,6 +29,7 @@
   --danger: #f87171;
   --danger-dim: rgba(248, 113, 113, 0.12);
   --success: #34d399;
+  --success-dim: rgba(52, 211, 153, 0.12);
 
   /* Glassmorphism */
   --glass-bg: rgba(13, 13, 26, 0.6);
@@ -38,7 +39,7 @@
   --glass-border: 1px solid rgba(255, 255, 255, 0.08);
 
   /* Gradients */
-  --grad-gold: linear-gradient(135deg, #e8c97d 0%, #c9983a 100%);
+  --grad-accent: linear-gradient(135deg, #e8c97d 0%, #c9983a 100%);
   --grad-secondary: linear-gradient(135deg, #414e60 0%, #2c3542 100%);
   --grad-surface: linear-gradient(160deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.01) 100%);
   --grad-bg: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(232, 201, 125, 0.08) 0%, transparent 60%),
@@ -170,7 +171,7 @@ body {
 
 /* Primary – gold filled */
 .btn-primary {
-  background: var(--grad-gold);
+  background: var(--grad-accent);
   color: #07070f;
   font-weight: 600;
   box-shadow: 0 0 0 rgba(232, 201, 125, 0);
@@ -207,7 +208,7 @@ body {
 }
 
 .btn-accent.active {
-  background: var(--grad-gold);
+  background: var(--grad-accent);
   color: #07070f;
   border-color: transparent;
 }
@@ -228,6 +229,18 @@ body {
   background: var(--grad-secondary);
   color: var(--text);
   border-color: transparent;
+}
+
+/* Success */
+.btn-success {
+  background: var(--success-dim);
+  border-color: rgba(52, 211, 153, 0.25);
+  color: var(--success);
+}
+
+.btn-success:hover:not(:disabled) {
+  background: rgba(52, 211, 153, 0.18);
+  box-shadow: var(--shadow-secondary);
 }
 
 /* Danger */
@@ -288,7 +301,7 @@ body {
   cursor: default;
 }
 
-.chip-gold {
+.chip-accent {
   background: var(--accent-dim);
   border: 1px solid rgba(232, 201, 125, 0.2);
   color: var(--accent);
@@ -309,7 +322,7 @@ body {
   box-shadow: var(--shadow-sm);
 }
 
-.chip-gold.chip-clickable:hover {
+.chip-accent.chip-clickable:hover {
   background: rgba(232, 201, 125, 0.2);
   border-color: rgba(232, 201, 125, 0.4);
   box-shadow: 0 2px 12px var(--accent-glow);
@@ -363,7 +376,7 @@ body {
 
 /* Gradient Text */
 .gradient-text {
-  background: var(--grad-gold);
+  background: var(--grad-accent);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -376,7 +389,12 @@ body {
   -webkit-text-fill-color: transparent;
 }
 
-/* Misc Classes */
+/* Header */
+
+.page-header {
+  padding: 4rem 0 2.5rem;
+}
+
 .logo {
   font-family: var(--font-display);
   font-size: clamp(3rem, 10vw, 4.5rem);

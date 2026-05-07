@@ -208,4 +208,51 @@ export class SupabaseService {
     }
     return (data ?? []) as Genre[];
   }
+
+  // Profiles & Storage
+
+  async uploadAvatar(file: File): Promise<string> {
+    if (!this.client || !this.currentUser) throw new Error('Not authenticated');
+
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${this.currentUser.id}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+    const filePath = `avatars/${fileName}`;
+
+    const { error: uploadError } = await this.client.storage
+      .from('avatars')
+      .upload(filePath, file);
+
+    if (uploadError) throw uploadError;
+
+    return filePath;
+  }
+
+  getPublicUrl(path: string): string {
+    if (!this.client) return '';
+    const { data } = this.client.storage.from('avatars').getPublicUrl(path);
+    return data.publicUrl;
+  }
+
+  async isDisplayNameUnique(displayName: string): Promise<boolean> {
+    if (!this.client) return true;
+
+    // Attempt to query profiles table. If it fails (e.g. doesn't exist), we fallback to true
+    // but log the error for development awareness.
+    try {
+      const { data, error } = await this.client
+        .from('profiles')
+        .select('display_name')
+        .eq('display_name', displayName)
+        .maybeSingle();
+
+      if (error) {
+        console.warn('Profiles table check failed:', error.message);
+        return true;
+      }
+
+      return !data;
+    } catch (e) {
+      return true;
+    }
+  }
 }

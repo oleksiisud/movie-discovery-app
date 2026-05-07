@@ -11,27 +11,6 @@
   margin: 0 auto;
 }
 
-/* Header */
-.page-header {
-  padding: 4rem 0 2.5rem;
-}
-
-.page-title {
-  font-family: 'Playfair Display', serif;
-  font-size: clamp(2rem, 6vw, 3.25rem);
-  font-weight: 700;
-  color: var(--text);
-  margin: 0;
-  letter-spacing: -0.02em;
-}
-
-.page-subtitle {
-  margin: 0.5rem 0 0;
-  color: var(--muted);
-  font-size: 0.9rem;
-  font-weight: 300;
-}
-
 /* Tab bar */
 .tab-bar {
   display: flex;

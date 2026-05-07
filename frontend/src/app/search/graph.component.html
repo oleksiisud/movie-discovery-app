@@ -61,7 +61,7 @@
     <label>Genres</label>
     <div class="genre-grid">
       @for (g of genres; track g.id) {
-      <div class="chip chip-clickable" [class.chip-gold]="isGenreSelected(g.id)"
+      <div class="chip chip-clickable" [class.chip-accent]="isGenreSelected(g.id)"
         [class.chip-secondary]="!isGenreSelected(g.id)" (click)="toggleGenre(g.id)">
         {{ g.name }}
       </div>

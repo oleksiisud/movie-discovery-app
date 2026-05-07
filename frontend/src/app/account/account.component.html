@@ -1,24 +1,142 @@
 <div class="page">
-
-  <header class="hero">
-    <h1 class="logo">ACCOUNT</h1>
-    <p class="tagline">save movies for later</p>
+  <div class="page-header">
+    <h1 class="logo gradient-text">ACCOUNT</h1>
+    <p class="tagline">View your profile and friends</p>
+  </div>
+  <header class="profile-header">
+    <div class="avatar-container">
+      <div class="avatar">
+        @if (getAvatarUrl()) {
+          <img [src]="getAvatarUrl()" alt="Avatar" class="avatar-img-main" />
+        } @else {
+          {{ getUserInitials() }}
+        }
+      </div>
+    </div>
+    <div class="profile-meta">
+      <h1 class="user-email">{{ getUserDisplayName() }}</h1>
+      <div class="profile-badges">
+        <span class="badge profile-badge">
+          <span class="material-symbols-rounded">bookmark</span>
+          {{ savedMovies.length }} Saved
+        </span>
+        <span class="badge profile-badge">
+          <span class="material-symbols-rounded">visibility</span>
+          {{ seenMovies.length }} Seen
+        </span>
+      </div>
+    </div>
+    <div class="header-actions">
+      <a class="btn btn-icon btn-secondary" [routerLink]="['/settings']" title="Settings">
+        <span class="material-symbols-rounded">settings</span>
+      </a>
+      <button class="btn btn-icon btn-danger" (click)="signOut()" title="Sign Out">
+        <span class="material-symbols-rounded">logout</span>
+      </button>
+    </div>
   </header>
 
-  <div class="card profile-card">
-    <div class="avatar-wrap">
-      <div class="avatar-circle">{{ getUserInitials() }}</div>
-    </div>
-    <div class="profile-info">
-      <p class="profile-email">{{ getUserEmail() }}</p>
-      <p class="profile-label">Signed in</p>
-    </div>
-    <div class="profile-actions">
-      <a class="btn btn-primary" [routerLink]="['/watchlist']" id="btn-go-watchlist">
-        Go to Watchlist
-      </a>
-      <button class="btn btn-ghost" id="btn-sign-out" (click)="signOut()">Sign Out</button>
-    </div>
+  <div class="account-content">
+
+    <!-- Watchlist Preview Section -->
+    <section class="account-section">
+      <div class="section-header">
+        <h2 class="section-title">Your Watchlist</h2>
+        <a class="view-all-link" [routerLink]="['/watchlist']">
+          View All <span class="material-symbols-rounded">chevron_right</span>
+        </a>
+      </div>
+
+      @if (loading) {
+      <div class="horizontal-skeleton">
+        @for (i of [1,2,3,4,5]; track i) {
+        <div class="skeleton-item"></div>
+        }
+      </div>
+      } @else if (savedMovies.length > 0) {
+      <div class="movie-row">
+        @for (entry of savedMovies.slice(0, 6); track entry.id) {
+        <div class="movie-item">
+          @if (entry.movies?.poster_path) {
+          <img [src]="'https://image.tmdb.org/t/p/w500' + entry.movies?.poster_path" alt="Poster"
+            class="small-poster" />
+          } @else {
+          <div class="small-poster placeholder">
+            <span class="material-symbols-rounded">movie</span>
+          </div>
+          }
+          <div class="movie-overlay">
+            <p class="movie-overlay-title">{{ entry.movies?.title }}</p>
+          </div>
+        </div>
+        }
+      </div>
+      } @else {
+      <div class="empty-preview glass">
+        <p>No films saved yet.</p>
+        <a [routerLink]="['/']">Discover movies</a>
+      </div>
+      }
+    </section>
+
+    <!-- Seen Movies Section -->
+    <section class="account-section">
+      <div class="section-header">
+        <h2 class="section-title">Seen Movies</h2>
+        @if (seenMovies.length > 6) {
+        <button class="btn-expand" (click)="seenExpanded = !seenExpanded">
+          {{ seenExpanded ? 'Collapse' : 'Show All' }}
+          <span class="material-symbols-rounded">{{ seenExpanded ? 'expand_less' : 'expand_more' }}</span>
+        </button>
+        }
+      </div>
+
+      @if (loading) {
+      <div class="movie-grid-preview">
+        @for (i of [1,2,3,4,5,6]; track i) {
+        <div class="skeleton-item"></div>
+        }
+      </div>
+      } @else if (seenMovies.length > 0) {
+      <div class="movie-grid-preview" [class.expanded]="seenExpanded">
+        @for (entry of seenMoviesPreview; track entry.id) {
+        <div class="movie-item">
+          @if (entry.movies?.poster_path) {
+          <img [src]="'https://image.tmdb.org/t/p/w500' + entry.movies?.poster_path" alt="Poster"
+            class="small-poster" />
+          } @else {
+          <div class="small-poster placeholder">
+            <span class="material-symbols-rounded">movie</span>
+          </div>
+          }
+          <div class="movie-overlay">
+            <p class="movie-overlay-title">{{ entry.movies?.title }}</p>
+          </div>
+        </div>
+        }
+      </div>
+      } @else {
+      <div class="empty-preview glass">
+        <p>You haven't marked any films as seen yet.</p>
+      </div>
+      }
+    </section>
+
+    <!-- Friends Placeholder Section -->
+    <section class="account-section friends-section">
+      <div class="section-header">
+        <h2 class="section-title">Friends</h2>
+        <span class="coming-soon">Coming Soon</span>
+      </div>
+      <div class="card friends-placeholder glass">
+        <div class="placeholder-icon">
+          <span class="material-symbols-rounded">group</span>
+        </div>
+        <p>Connect with friends to see what they're watching and get social recommendations.</p>
+        <button class="btn btn-primary" disabled>Add Friends</button>
+      </div>
+    </section>
+
   </div>
 
 </div>
