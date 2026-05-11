@@ -1,5 +1,7 @@
 import json
 import logging
+import base64
+import numpy as np
 
 import regex as re
 import httpx
@@ -17,11 +19,7 @@ import requests
 from PIL import Image, ImageOps
 from ddgs import DDGS
 
-try:
-    from transparent_background import Remover
-    remover = Remover()
-except Exception as e:
-    remover = None
+
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +52,23 @@ PALETTE = [
     188, 162, 150,   23, 165, 247,  126, 148, 247,  203, 126, 247,
     228,  77,  11,   64, 124, 235,  111, 191, 245
 ]
+
+def remove_background_simple(img, tolerance=30):
+    """
+    Remove background by identifying the top-left pixel color 
+    and making similar pixels transparent.
+    """
+    img = img.convert("RGBA")
+    data = np.array(img)
+    
+    # Take top-left pixel as background color
+    bg_color = data[0, 0, :3]
+    
+    # Create mask for pixels within tolerance of bg_color
+    mask = np.all(np.abs(data[:, :, :3] - bg_color) < tolerance, axis=-1)
+    data[mask, 3] = 0
+    
+    return Image.fromarray(data)
 
 def add_border(img, border_color=(0, 0, 0, 255)):
     width, height = img.size
@@ -431,7 +446,7 @@ def recommend(request):
     movie_ids = body.get("movie_ids", None)
     exclude_ids = body.get("exclude_ids", None)
 
-    logger.debug(movie_ids)
+
 
     if not emotion or emotion not in KNOWN_EMOTIONS:
         return JsonResponse(
@@ -558,11 +573,8 @@ def generate_pixel_sprite(request):
         original_img = ImageOps.fit(original_img, (min_dim, min_dim))
 
         
-        # STEP 2: Remove Background
-        if remover:
-            img_no_bg = remover.process(original_img)
-        else:
-            img_no_bg = original_img.convert("RGBA")
+        # STEP 2: Remove Background (Simple Color-based)
+        img_no_bg = remove_background_simple(original_img)
             
         # STEP 3: Downscale to 18x18
         small_img = img_no_bg.resize((18, 18), resample=Image.NEAREST)
@@ -580,7 +592,7 @@ def generate_pixel_sprite(request):
 
         buffer = io.BytesIO()
         final_img.save(buffer, format="PNG")
-        import base64
+
         img_b64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
         
         try:
