@@ -1,9 +1,12 @@
 import os
 import time
+import logging
 import requests
 import numpy as np
 
 HF_MODEL_URL = "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction"
+
+logger = logging.getLogger(__name__)
 
 def get_embedding(texts, retries=5, wait=20):
     """
@@ -39,7 +42,7 @@ def get_embedding(texts, retries=5, wait=20):
             return embeddings[0] if is_single else embeddings
 
         if response.status_code in (503, 504):
-            print(f"Model unavailable (attempt {attempt + 1}/{retries}), retrying in {wait}s...")
+            logger.warning("Model unavailable (attempt %d/%d), retrying in %ds...", attempt + 1, retries, wait)
             time.sleep(wait)
         else:
             raise Exception(f"Embedding API error {response.status_code}: {response.text}")
