@@ -52,6 +52,8 @@ interface WebNode extends d3.SimulationNodeDatum {
     stationId?: string; // Which hub this element belongs to
     movieData?: Movie;
     isLoading?: boolean;
+    weight?: number;
+    sprite?: string;
 }
 
 interface WebLink extends d3.SimulationLinkDatum<WebNode> {
@@ -134,6 +136,9 @@ export class GraphComponent implements OnInit {
         });
     }
 
+    /**
+     * Handles the loadWatchlistMap operation.
+     */
     private async loadWatchlistMap(): Promise<void> {
         try {
             this.watchlistMap = await this.supabase.getWatchlistMap();
@@ -144,11 +149,17 @@ export class GraphComponent implements OnInit {
     }
 
     @HostListener('window:resize')
+    /**
+     * Handles window resize events.
+     */
     onResize() {
         this.viewWidth = window.innerWidth;
         this.viewHeight = window.innerHeight;
     }
 
+    /**
+     * Angular lifecycle hook to initialize the component.
+     */
     ngOnInit() {
         this.ngZone.runOutsideAngular(() => {
             this.initGraph();
@@ -158,6 +169,9 @@ export class GraphComponent implements OnInit {
     openDropdown: string | null = null;
 
     @HostListener('document:click', ['$event'])
+    /**
+     * Handles document clicks to close open dropdowns or menus.
+     */
     onDocumentClick(event: MouseEvent) {
         const target = event.target as HTMLElement;
         if (!target.closest('.custom-dropdown')) {
@@ -168,51 +182,78 @@ export class GraphComponent implements OnInit {
         }
     }
 
+    /**
+     * Toggles the visibility of a custom dropdown menu.
+     */
     toggleDropdown(dropdownName: string, event: Event) {
         event.stopPropagation();
         this.openDropdown = this.openDropdown === dropdownName ? null : dropdownName;
     }
 
+    /**
+     * Updates the sort order filter.
+     */
     selectSort(value: 'similarity' | 'popularity' | 'vote_average') {
         this.filters.sortBy = value;
         this.openDropdown = null;
     }
 
+    /**
+     * Updates the language filter.
+     */
     selectLanguage(value: string | null) {
         this.filters.language = value;
         this.openDropdown = null;
     }
 
+    /**
+     * Gets the human-readable label for a given language code.
+     */
     getLanguageLabel(code: string | null): string {
         if (!code) return 'Any';
         const lang = this.languages.find(l => l.code === code);
         return lang ? lang.label : 'Any';
     }
 
+    /**
+     * Ensures the 'year from' filter stays within valid bounds.
+     */
     constrainYearFrom(val: number): number {
         val = Number(val);
         if (val > this.filters.yearTo) return this.filters.yearTo;
         return val;
     }
 
+    /**
+     * Ensures the 'year to' filter stays within valid bounds.
+     */
     constrainYearTo(val: number): number {
         val = Number(val);
         if (val < this.filters.yearFrom) return this.filters.yearFrom;
         return val;
     }
 
+    /**
+     * Ensures the 'runtime min' filter stays within valid bounds.
+     */
     constrainRuntimeMin(val: number): number {
         val = Number(val);
         if (val > this.filters.runtimeMax) return this.filters.runtimeMax;
         return val;
     }
 
+    /**
+     * Ensures the 'runtime max' filter stays within valid bounds.
+     */
     constrainRuntimeMax(val: number): number {
         val = Number(val);
         if (val < this.filters.runtimeMin) return this.filters.runtimeMin;
         return val;
     }
 
+    /**
+     * Toggles the visibility of the search input field.
+     */
     toggleInput() {
         if (!this.inputOpen) {
             this.inputOpen = true;
@@ -226,10 +267,16 @@ export class GraphComponent implements OnInit {
         }
     }
 
+    /**
+     * Toggles the visibility of the filters panel.
+     */
     toggleFilters() {
         this.filtersOpen = !this.filtersOpen;
     }
 
+    /**
+     * Creates a new element node from the current search input text.
+     */
     addNodeFromInput() {
         const value = this.currentInput.trim().toLowerCase();
         if (!value) return;
@@ -242,18 +289,44 @@ export class GraphComponent implements OnInit {
             x: this.viewWidth / 2 + (Math.random() - 0.5) * 200,
             y: this.viewHeight / 2 + (Math.random() - 0.5) * 200,
             vx: 0,
-            vy: 0
+            vy: 0,
+            isLoading: true
         };
 
         this.nodes.push(node);
         this.currentInput = '';
         this.updateGraph();
+
+        this.http.get<{ image_data: string }>(`${environment.apiUrl}/api/sprite/?prompt=${encodeURIComponent(value)}`)
+            .subscribe({
+                next: (res) => {
+                    node.isLoading = false;
+                    node.sprite = res.image_data;
+                    this.updateGraph();
+                },
+                error: (err) => {
+                    console.error('Failed to generate sprite', err);
+                    node.isLoading = false;
+                    this.updateGraph();
+                }
+            });
     }
 
+    /**
+     * Handles actions triggered from the node context menu.
+     */
     onMenuAction(action: string): void {
         if (!this.selectedNode) return;
 
         switch (action) {
+            case '+1 Weight':
+                this.selectedNode.weight = (this.selectedNode.weight || 1) + 1;
+                break;
+
+            case 'Reset Weight':
+                this.selectedNode.weight = 1;
+                break;
+
             case 'Duplicate':
                 const newNode: WebNode = {
                     ...this.selectedNode,
@@ -357,18 +430,48 @@ export class GraphComponent implements OnInit {
         this.closeMenu();
     }
 
+    /**
+     * Opens the context menu for a specific node.
+     */
+    openContextMenu(event: MouseEvent, d: WebNode) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.ngZone.run(() => {
+            this.selectedNode = d;
+            this.menuLeft = d.x! - 90;
+            this.menuTop = d.y! + 22;
+            this.isMenuVisible = true;
+            this.cdr.markForCheck();
+        });
+    }
+
+    /**
+     * Closes the context menu and clears the selected node.
+     */
     closeMenu(): void {
         this.isMenuVisible = false;
         this.selectedNode = null;
         this.cdr.markForCheck();
     }
 
-    getActiveClusterInputs(hubId: string): string[] {
+    /**
+     * Retrieves formatted payload objects for all elements and movies connected to a hub.
+     */
+    getActiveClusterInputs(hubId: string): any[] {
         return this.nodes
-            .filter(n => n.stationId === hubId && n.type === 'element')
-            .map(n => n.name);
+            .filter(n => n.stationId === hubId && (n.type === 'element' || n.type === 'movie'))
+            .map(n => {
+                if (n.type === 'element') {
+                    return { type: 'element', word: n.name, weight: n.weight || 1 };
+                } else {
+                    return { type: 'movie', id: n.movieData!.id, weight: n.weight || 1 };
+                }
+            });
     }
 
+    /**
+     * Toggles the selection state of a genre filter.
+     */
     toggleGenre(id: number): void {
         const idx = this.filters.genreIds.indexOf(id);
         if (idx === -1) {
@@ -378,10 +481,16 @@ export class GraphComponent implements OnInit {
         }
     }
 
+    /**
+     * Checks if a specific genre ID is currently selected in filters.
+     */
     isGenreSelected(id: number): boolean {
         return this.filters.genreIds.includes(id);
     }
 
+    /**
+     * Handles the activeFilterCount operation.
+     */
     get activeFilterCount(): number {
         let count = 0;
         if (this.filters.genreIds.length > 0) count++;
@@ -392,6 +501,9 @@ export class GraphComponent implements OnInit {
         return count;
     }
 
+    /**
+     * Resets all filters to their default states.
+     */
     clearFilters(): void {
         this.filters = {
             genreIds: [],
@@ -404,6 +516,9 @@ export class GraphComponent implements OnInit {
         };
     }
 
+    /**
+     * Constructs a dictionary of active filters for the backend API payload.
+     */
     private buildFilterPayload(): Record<string, unknown> {
         const payload: Record<string, unknown> = {
             sort_by: this.filters.sortBy,
@@ -431,10 +546,16 @@ export class GraphComponent implements OnInit {
         return payload;
     }
 
+    /**
+     * Generates a random short ID string for nodes and hubs.
+     */
     private generateId(): string {
         return Math.random().toString(36).substring(2, 11);
     }
 
+    /**
+     * Rebuilds the internal mapping of node IDs to WebNode objects.
+     */
     private rebuildNodeMap() {
         this.nodeMap.clear();
         for (const n of this.nodes) {
@@ -442,15 +563,24 @@ export class GraphComponent implements OnInit {
         }
     }
 
+    /**
+     * Safely extracts a node ID from a WebLink source or target property.
+     */
     private getLinkId(node: string | WebNode | undefined): string {
         if (!node) return '';
         return typeof node === 'string' ? node : node.id;
     }
 
+    /**
+     * Calculates the appropriate radius for a hub's ring of elements based on node count.
+     */
     getRadius(n: number): number {
         return Math.max(160, (n * 180) / (2 * Math.PI));
     }
 
+    /**
+     * Custom D3 force implementation for rectangular bounding box collision detection.
+     */
     rectCollide() {
         let nodes: WebNode[] = [];
 
@@ -516,6 +646,9 @@ export class GraphComponent implements OnInit {
         return force;
     }
 
+    /**
+     * Initializes the D3 physics simulation, SVG layers, and forces.
+     */
     initGraph() {
         this.rebuildNodeMap();
 
@@ -545,6 +678,9 @@ export class GraphComponent implements OnInit {
         this.updateGraph();
     }
 
+    /**
+     * Restarts the D3 simulation and pushes data updates to SVG nodes and links.
+     */
     updateGraph() {
         this.rebuildNodeMap();
         this.renderLinks();
@@ -558,6 +694,9 @@ export class GraphComponent implements OnInit {
         this.simulation.alphaTarget(0.5).restart();
     }
 
+    /**
+     * Renders and updates the visual representation of graph links.
+     */
     private renderLinks() {
         const visibleLinks = this.links.filter(l => l.type !== 'spoke');
         const linkElems = this.linkGroup.selectAll<SVGLineElement, WebLink>('line')
@@ -575,6 +714,9 @@ export class GraphComponent implements OnInit {
         this.linkElements = this.linkGroup.selectAll<SVGLineElement, WebLink>('line');
     }
 
+    /**
+     * Renders and updates the visual representation of all graph nodes.
+     */
     private renderNodes() {
         const nodeElems = this.nodeGroup.selectAll<SVGGElement, WebNode>('g.node')
             .data(this.nodes, d => d.id);
@@ -588,17 +730,7 @@ export class GraphComponent implements OnInit {
                 if (event.defaultPrevented) return;
                 if (d.type === 'hub') this.triggerMix(d);
             })
-            .on('contextmenu', (event: MouseEvent, d: WebNode) => {
-                event.preventDefault();
-                event.stopPropagation();
-                this.ngZone.run(() => {
-                    this.selectedNode = d;
-                    this.menuLeft = d.x! - 90;
-                    this.menuTop = d.y! + 22;
-                    this.isMenuVisible = true;
-                    this.cdr.markForCheck();
-                });
-            });
+            .on('contextmenu', (event: MouseEvent, d: WebNode) => this.openContextMenu(event, d));
 
         nodeEnter.each((d, i, nodes) => {
             const el = d3.select(nodes[i]);
@@ -676,12 +808,108 @@ export class GraphComponent implements OnInit {
                             .style('pointer-events', 'none');
                     }
                 }
+            } else if (d.type === 'element') {
+                const glass = el.select('.glass');
+                glass.html('');
+                if (d.isLoading) {
+                    glass.html(`<span class="material-symbols-rounded spinner-icon" style="font-size: 20px; margin-right: 8px;">cyclone</span>${d.name}`);
+                    const spin = glass.select('.spinner-icon');
+                    // Add some animation style since we can't easily animateTransform here
+                    spin.style('animation', 'spin 1s linear infinite');
+
+                    if (document.getElementById('spin-keyframes') === null) {
+                        const style = document.createElement('style');
+                        style.id = 'spin-keyframes';
+                        style.innerHTML = `@keyframes spin { 100% { transform: rotate(360deg); } }`;
+                        document.head.appendChild(style);
+                    }
+                } else if (d.sprite) {
+                    glass.html(`<img src="data:image/png;base64,${d.sprite}" style="width: 28px; height: 28px; image-rendering: pixelated; margin-right: 8px;" />${d.name}`);
+                } else {
+                    glass.html(`<span class="material-symbols-rounded" style="font-size: 20px; margin-right: 8px; color: var(--accent);">extension</span>${d.name}`);
+                }
+            }
+
+            // Weight badge logic
+            if (d.type !== 'hub') {
+                const weight = d.weight || 1;
+                let badge = el.select<SVGGElement>('g.weight-badge');
+
+                if (weight > 1) {
+                    if (badge.empty()) {
+                        badge = el.append('g').attr('class', 'weight-badge');
+                        badge.append('circle').attr('r', 12).attr('fill', 'var(--accent)').attr('stroke', '#07070f').attr('stroke-width', 2);
+                        badge.append('text').attr('text-anchor', 'middle').attr('dy', 4)
+                            .style('fill', '#07070f').style('font-family', 'var(--font-ui)').style('font-size', '12px').style('font-weight', 'bold');
+                    }
+                    badge.select('text').text(weight);
+
+                    const isCollapsed = !!d.stationId;
+                    const w = 160;
+                    const h = (d.type === 'movie' && !isCollapsed) ? 260 : 44;
+
+                    badge.attr('transform', `translate(${w / 2}, ${-h / 2})`);
+                } else {
+                    badge.remove();
+                }
+            }
+
+            // Triple dot menu button
+            if (d.type !== 'hub') {
+                let dots = el.select<SVGGElement>('g.more-dots');
+                if (dots.empty()) {
+                    dots = el.append('g').attr('class', 'more-dots')
+                        .style('cursor', 'pointer')
+                        .on('click', (event: MouseEvent) => {
+                            event.stopPropagation();
+                            this.openContextMenu(event, d);
+                        })
+                        .on('mouseenter', (event: MouseEvent) => {
+                            d3.select(event.currentTarget as SVGGElement).select('.more-dots-bg')
+                                .attr('fill', 'rgba(255,255,255,0.1)');
+                        })
+                        .on('mouseleave', (event: MouseEvent) => {
+                            d3.select(event.currentTarget as SVGGElement).select('.more-dots-bg')
+                                .attr('fill', 'transparent');
+                        });
+
+                    dots.append('rect')
+                        .attr('class', 'more-dots-bg')
+                        .attr('x', -14)
+                        .attr('y', -16)
+                        .attr('width', 28)
+                        .attr('height', 32)
+                        .attr('rx', 6)
+                        .attr('fill', 'transparent');
+
+                    dots.append('text')
+                        .attr('class', 'material-symbols-rounded')
+                        .attr('text-anchor', 'middle')
+                        .attr('dy', 10)
+                        .style('fill', 'var(--text-2)')
+                        .style('font-size', '20px')
+                        .text('more_vert');
+
+                    const initialIsCollapsed = !!d.stationId;
+                    const initialDotY = (d.type === 'movie' && !initialIsCollapsed) ? 105 : 0;
+                    dots.attr('transform', `translate(${160 / 2 - 18}, ${initialDotY})`);
+                }
+
+                const isCollapsed = !!d.stationId;
+                const w = 160;
+                const dotY = (d.type === 'movie' && !isCollapsed) ? 105 : 0;
+
+                // Position inside the right edge of the node (right edge is +80, so position at +62)
+                dots.transition().duration(300).attr('transform', `translate(${w / 2 - 18}, ${dotY})`);
             }
         });
 
         nodeElems.exit().remove();
     }
 
+    /**
+     * Constructs the SVG/HTML structure for an element pill node.
+     */
     private renderElementNode(el: d3.Selection<SVGGElement, unknown, null, undefined>, d: WebNode) {
         el.append('rect')
             .attr('width', 160).attr('height', 44)
@@ -700,7 +928,7 @@ export class GraphComponent implements OnInit {
             .style('height', '100%')
             .style('display', 'flex')
             .style('align-items', 'center')
-            .style('justify-content', 'center')
+            .style('justify-content', 'flex-start')
             .style('border-radius', '12px')
             .style('color', 'var(--text)')
             .style('font-family', 'var(--font-ui)')
@@ -709,16 +937,20 @@ export class GraphComponent implements OnInit {
             .style('box-shadow', '0px 4px 16px rgba(0,0,0,0.5)')
             .style('box-sizing', 'border-box')
             .style('margin', '0')
+            .style('padding', '0 12px')
             .text(d.name);
     }
 
+    /**
+     * Constructs the SVG/HTML structure for a movie poster node.
+     */
     private renderMovieNode(el: d3.Selection<SVGGElement, unknown, null, undefined>, d: WebNode) {
         const w = 160;
         const h = 260;
         const posterH = 210;
 
         const m = d.movieData;
-        console.log(m!);
+
 
         el.append('rect')
             .attr('width', w).attr('height', h)
@@ -743,21 +975,28 @@ export class GraphComponent implements OnInit {
             .style('margin', '0');
 
         if (m!.poster_path) {
-            const posterDiv = card.append('xhtml:div')
+            const posterDiv = card.append('div')
                 .attr('class', 'movie-poster')
                 .style('width', '100%')
                 .style('height', posterH + 'px')
                 .style('background-image', `url(https://image.tmdb.org/t/p/w500${m!.poster_path})`)
                 .style('background-size', 'cover')
+                .style('background-position', 'center')
                 .style('border-bottom', '1px solid rgba(255,255,255,0.1)');
         } else {
-            const posterDiv = card.append('xhtml:div')
+            const posterDiv = card.append('div')
                 .attr('class', 'movie-poster')
                 .style('width', '100%')
                 .style('height', posterH + 'px')
-                .style('background-image', `url(https://critics.io/img/movies/poster-placeholder.png)`)
-                .style('background-size', 'cover')
-                .style('border-bottom', '1px solid rgba(255,255,255,0.1)');
+                .style('display', 'flex')
+                .style('align-items', 'center')
+                .style('justify-content', 'center')
+                .style('color', 'var(--muted)')
+                .style('background', 'var(--surface)')
+                .style('border-bottom', '1px solid rgba(255,255,255,0.1)')
+                .append('span')
+                .attr('class', 'material-symbols-rounded')
+                .text('movie');
         }
 
 
@@ -775,6 +1014,9 @@ export class GraphComponent implements OnInit {
             .text(d.name);
     }
 
+    /**
+     * Constructs the SVG/HTML structure for a Mix hub node.
+     */
     private renderHubNode(el: d3.Selection<SVGGElement, unknown, null, undefined>, d: WebNode) {
         el.append('circle')
             .attr('r', 35)
@@ -793,6 +1035,9 @@ export class GraphComponent implements OnInit {
             .style('pointer-events', 'none');
     }
 
+    /**
+     * D3 simulation tick handler for updating node positions and bounding boxes.
+     */
     ticked() {
         this.hubCache.clear();
 
@@ -869,8 +1114,8 @@ export class GraphComponent implements OnInit {
                     const isHubA = myNode.type === 'hub';
                     const isHubB = targetNode.type === 'hub';
 
-                    const threshX = (isHubA ? 35 : 80) + (isHubB ? 35 : 80) + 60;
-                    const threshY = (isHubA ? 35 : isMovieA ? 130 : 22) + (isHubB ? 35 : isMovieB ? 130 : 22) + 60;
+                    const threshX = (isHubA ? 35 : 80) + (isHubB ? 35 : 80) + 50;
+                    const threshY = (isHubA ? 35 : isMovieA ? 130 : 22) + (isHubB ? 35 : isMovieB ? 130 : 22) + 50;
 
                     if (dx < threshX && dy < threshY) {
                         const area = dx * dy;
@@ -907,6 +1152,9 @@ export class GraphComponent implements OnInit {
         }
     }
 
+    /**
+     * Configures the D3 drag behavior for nodes.
+     */
     drag(simulation: d3.Simulation<WebNode, WebLink>) {
         return d3.drag<SVGGElement, WebNode>()
             .on('start', (event: d3.D3DragEvent<SVGGElement, WebNode, WebNode>, d: WebNode) => {
@@ -931,6 +1179,9 @@ export class GraphComponent implements OnInit {
             });
     }
 
+    /**
+     * Finds all node IDs connected in a cluster originating from a start node.
+     */
     getClusterIds(startNode: WebNode): Set<string> {
         const cluster = new Set<string>();
         if (startNode.type === 'hub' || startNode.stationId) {
@@ -957,6 +1208,9 @@ export class GraphComponent implements OnInit {
         return cluster;
     }
 
+    /**
+     * Evaluates node proximity during a drag to handle merging or clustering.
+     */
     checkProximity(draggedNode: WebNode) {
         const myIds = this.getClusterIds(draggedNode);
 
@@ -980,11 +1234,20 @@ export class GraphComponent implements OnInit {
                 const isHubA = myNode.type === 'hub';
                 const isHubB = targetNode.type === 'hub';
 
-                const threshX = (isHubA ? 35 : 80) + (isHubB ? 35 : 80) + 60;
-                const threshY = (isHubA ? 35 : isMovieA ? 130 : 22) + (isHubB ? 35 : isMovieB ? 130 : 22) + 60;
+                const threshX = (isHubA ? 35 : 80) + (isHubB ? 35 : 80) + 50;
+                const threshY = (isHubA ? 35 : isMovieA ? 130 : 22) + (isHubB ? 35 : isMovieB ? 130 : 22) + 50;
 
                 if (dx < threshX && dy < threshY) {
                     isClose = true;
+
+                    const isIdentical = myNode.type === targetNode.type && myNode.type !== 'hub' &&
+                        (myNode.type === 'element' ? myNode.name === targetNode.name : myNode.movieData?.id === targetNode.movieData?.id);
+
+                    if (isIdentical && myIds.size === 1) {
+                        this.mergeIdenticalNodes(myNode, targetNode);
+                        return; // Stop checkProximity immediately
+                    }
+
                     break;
                 }
             }
@@ -1016,18 +1279,51 @@ export class GraphComponent implements OnInit {
         }
     }
 
+    /**
+     * Merges a dragged node into a target node of identical type and content.
+     */
+    mergeIdenticalNodes(dragged: WebNode, target: WebNode) {
+        target.weight = (target.weight || 1) + (dragged.weight || 1);
+
+        // Remove dragged node
+        this.nodes = this.nodes.filter(n => n.id !== dragged.id);
+
+        // If dragged was in a hub, rebuild
+        if (dragged.stationId) {
+            const hubRemaining = this.nodes.filter(n => n.stationId === dragged.stationId);
+            if (hubRemaining.length < 2) {
+                // dissolve
+                hubRemaining.forEach(n => n.stationId = undefined);
+                this.nodes = this.nodes.filter(n => n.id !== dragged.stationId);
+            } else {
+                this.rebuildHubStructure(dragged.stationId);
+            }
+        }
+
+        this.updateGraph();
+    }
+
+    /**
+     * Merges the contents of one hub into another hub.
+     */
     mergeTwoHubs(hubId1: string, hubId2: string) {
         const nodesFromHub2 = this.nodes.filter(n => n.stationId === hubId2).map(n => n.id);
         this.nodes = this.nodes.filter(n => n.id !== hubId2);
         this.absorbLooseNodes(hubId1, nodesFromHub2);
     }
 
+    /**
+     * Absorbs unconnected nodes into an existing hub.
+     */
     absorbLooseNodes(hubId: string, elementIds: string[]) {
         const elements = this.nodes.filter(n => elementIds.includes(n.id));
         elements.forEach(n => n.stationId = hubId);
         this.rebuildHubStructure(hubId);
     }
 
+    /**
+     * Creates a new hub and binds a set of loose elements/movies to it.
+     */
     formMixStation(elementIds: string[]) {
         const elements = this.nodes.filter(n => elementIds.includes(n.id));
         if (elements.length > 5) return;
@@ -1041,6 +1337,9 @@ export class GraphComponent implements OnInit {
         this.rebuildHubStructure(hubId);
     }
 
+    /**
+     * Recalculates positions and links for elements bound to a hub.
+     */
     rebuildHubStructure(hubId: string) {
         const hub = this.nodes.find(n => n.id === hubId)!;
         const elements = this.nodes.filter(n => n.stationId === hubId);
@@ -1093,6 +1392,9 @@ export class GraphComponent implements OnInit {
         this.updateGraph();
     }
 
+    /**
+     * Dispatches a search API request using the contents of a hub.
+     */
     triggerMix(hub: WebNode) {
         if (hub.isLoading) return;
 
@@ -1120,9 +1422,12 @@ export class GraphComponent implements OnInit {
         });
     }
 
+    /**
+     * Creates and positions a new movie node based on search results.
+     */
     spawnMovieNode(hub: WebNode, movie: Movie) {
         const elements = this.nodes.filter(n => n.stationId === hub.id);
-        console.log('Movie:', movie);
+
         this.nodes = this.nodes.filter(n => n.id !== hub.id);
         this.links = this.links.filter(l => {
             const s = this.getLinkId(l.source);
@@ -1164,6 +1469,9 @@ export class GraphComponent implements OnInit {
         }, 500);
     }
 
+    /**
+     * Toggles the user's watchlist state for a specific movie.
+     */
     async toggleWatchlist(movie: Movie, status: WatchStatus): Promise<void> {
         if (!this.supabase.currentUser) {
             this.router.navigate(['/account']);

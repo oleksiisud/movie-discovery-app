@@ -11,6 +11,17 @@ from django.views.decorators.http import require_POST
 from .cache import get_cached_results, make_cache_key, set_cached_results
 from .embeddings import get_embedding
 from .supabase_client import get_client
+import io
+import os
+import requests
+from PIL import Image, ImageOps
+from ddgs import DDGS
+
+try:
+    from transparent_background import Remover
+    remover = Remover()
+except Exception as e:
+    remover = None
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +35,42 @@ KNOWN_EMOTIONS = {
 
 # Valid sort_by values accepted by both RPCs
 VALID_SORT_BY = {"similarity", "popularity", "vote_average"}
+
+PALETTE = [
+    251, 185,  84,   46,  34,  47,   62,  53,  70,  249, 194,  43,
+    247, 150,  23,  255, 244, 224,   98,  85, 101,  127, 112, 138,
+    123, 182,  78,  110, 156, 240,  213,   7,   7,  137,  58, 170,
+    230, 109, 110,   84, 143, 251,  161, 174, 251,  221, 161, 251,
+     84, 183, 251,  243, 133, 133,   94,  34, 119,  105,  79,  98,
+    241, 100,  43,   38,  34,  47,  198, 109,  56,  129,  91,  73,
+    225, 195, 189,   40,  47,  47,   38,  47,  34,   40,  47,  41,
+    133,  69, 139,   23,  17,  24,  213,  69,  71,  101, 155,  55,
+    201, 194, 182,   91, 170,  58,  210,  91,  68,  134, 134, 134,
+    238, 133, 112,    0, 193, 255,  141, 141, 141,  245, 189, 162,
+    132, 210,  72,  167, 100, 196,  255, 252, 245,  158,  40,  17,
+    228,  65,  34,  213,  61,  32,  182,  88, 235,  255,  12, 200,
+    110, 187, 240,  151, 185, 248,  138, 140, 249,   43, 139, 249,
+    227, 138, 249,   87,  61,  49,  230, 152, 137,  171,  90,  42,
+    188, 162, 150,   23, 165, 247,  126, 148, 247,  203, 126, 247,
+    228,  77,  11,   64, 124, 235,  111, 191, 245
+]
+
+def add_border(img, border_color=(0, 0, 0, 255)):
+    width, height = img.size
+    new_img = img.copy()
+    pixels = img.load()
+    new_pixels = new_img.load()
+
+    for y in range(height):
+        for x in range(width):
+            if pixels[x, y][3] == 0:
+                for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                    nx, ny = x + dx, y + dy
+                    if 0 <= nx < width and 0 <= ny < height:
+                        if pixels[nx, ny][3] > 0:
+                            new_pixels[x, y] = border_color
+                            break
+    return new_img
 
 
 def parse_filters(body: dict) -> tuple[dict, str | None]:
@@ -188,12 +235,13 @@ def search(request):
     """
     POST /api/search/
 
-    1. Validates and normalises the `inputs` list (2–5 words/phrases)
+    1. Validates and normalises the `inputs` list (2–5 dicts with type/weight)
     2. Parses optional filter/sort parameters
     3. Checks Redis cache — returns immediately on a HIT
-    4. On a MISS: embeds the query via HuggingFace → 384-dim vector
-    5. Calls Supabase match_movies RPC with filter params
-    6. Stores the result in Redis and returns it
+    4. On a MISS: fetches embeddings for elements via HF and movies via Supabase
+    5. Combines them via a weighted centroid calculation
+    6. Calls Supabase match_movies RPC with filter params
+    7. Stores the result in Redis and returns it
 
     :param request: Django HttpRequest object
     :return: JsonResponse with search results or error message
@@ -207,47 +255,122 @@ def search(request):
 
     if not isinstance(inputs, list) or not (2 <= len(inputs) <= 5):
         return JsonResponse(
-            {"error": "Provide between 2 and 5 words or phrases."},
+            {"error": "Provide between 2 and 5 unique inputs."},
             status=400,
         )
 
-    # Validate each input individually (the joined string contains ', ' separators
-    # which are intentionally non-word characters, so we must not check the join).
-    for term in inputs:
-        if len(term) > 100:
-            return JsonResponse({"error": "Each term must be 100 characters or fewer."}, status=400)
-        if re.search(r'\W ', term):
-            return JsonResponse({"error": "Query contains invalid characters"}, status=400)
+    for item in inputs:
+        if not isinstance(item, dict):
+            return JsonResponse({"error": "Each input must be an object."}, status=400)
+        type = item.get("type")
+        if type not in ("element", "movie"):
+            return JsonResponse({"error": "Invalid input type. Must be 'element' or 'movie'."}, status=400)
+        
+        if type == "element":
+            word = item.get("word")
+            if not isinstance(word, str) or len(word) > 100:
+                return JsonResponse({"error": "Element word must be a string of 100 characters or fewer."}, status=400)
+            if re.search(r'\W ', word):
+                return JsonResponse({"error": "Element word contains invalid characters"}, status=400)
+        elif type == "movie":
+            m_id = item.get("id")
+            if not isinstance(m_id, int):
+                return JsonResponse({"error": "Movie id must be an integer."}, status=400)
+
+        weight = item.get("weight", 1)
+        if not isinstance(weight, int) or weight < 0:
+            return JsonResponse({"error": "Weight must be a non-negative integer."}, status=400)
 
     # Parse filter params
     filters, filter_error = parse_filters(body)
     if filter_error:
         return JsonResponse({"error": filter_error}, status=400)
 
-    # Build query string for the embedding model
-    query_text = ", ".join(inputs)
-
-    # Cache check — skip expensive HuggingFace + Supabase calls on a HIT.
+    # Cache check
     cache_key = make_cache_key(inputs, filters)
     sort_by = filters.get("sort_by", "similarity")
     cached = get_cached_results(cache_key)
     if cached is not None:
         sorted_cached = sort_movies(cached, sort_by)
-        return JsonResponse({"results": [serialize_movie(m) for m in sorted_cached[:10]], "cached": True})
+        
+        from .cache import get_and_increment_hit_count
+        hit_count = get_and_increment_hit_count(cache_key)
+        
+        if len(sorted_cached) > 0:
+            offset = hit_count % len(sorted_cached)
+            rotated = sorted_cached[offset:] + sorted_cached[:offset]
+        else:
+            rotated = sorted_cached
+            
+        return JsonResponse({"results": [serialize_movie(m) for m in rotated[:10]], "cached": True})
 
-    # Cache MISS — embed and query
-    try:
-        embedding = get_embedding(query_text)
-    except Exception as e:
-        logger.error("Embedding failed for query %r: %s", query_text, e)
-        return JsonResponse({"error": f"Embedding failed: {str(e)}"}, status=502)
+    # Cache MISS — fetch embeddings
+    element_words = []
+    movie_ids = []
 
-    if not embedding or len(embedding) == 0:
-        return JsonResponse({"error": "Embedding is empty"}, status=502)
+    for item in inputs:
+        if item.get("type") == "element":
+            element_words.append(item.get("word").strip())
+        elif item.get("type") == "movie":
+            movie_ids.append(item.get("id"))
 
-    logger.debug("Query: %r  embedding_dim=%d", query_text, len(embedding))
+    # Embed elements
+    element_embeddings = []
+    if element_words:
+        try:
+            element_embeddings = get_embedding(element_words)
+            if element_embeddings and not isinstance(element_embeddings[0], (list, tuple)):
+                element_embeddings = [element_embeddings]
+        except Exception as e:
+            logger.error("Embedding failed for elements %r: %s", element_words, e)
+            return JsonResponse({"error": f"Embedding failed: {str(e)}"}, status=502)
 
+    # Fetch movie embeddings
+    movie_embeddings_map = {}
     supabase = get_client()
+    if movie_ids:
+        try:
+            response = supabase.table("movies").select("id, embedding").in_("id", movie_ids).execute()
+            for row in response.data:
+                if row.get("embedding"):
+                    emb = row["embedding"]
+                    if isinstance(emb, str):
+                        emb = json.loads(emb)
+                    movie_embeddings_map[row["id"]] = emb
+        except Exception as e:
+            logger.error("Failed to fetch movie embeddings: %s", e)
+            return JsonResponse({"error": "Database error fetching movie embeddings."}, status=502)
+
+        # Check if all requested movies had embeddings
+        for m_id in movie_ids:
+            if m_id not in movie_embeddings_map:
+                return JsonResponse({"error": f"Movie embedding not found for id {m_id}."}, status=404)
+
+    # Combine embeddings
+    total_weight = sum(item.get("weight", 1) for item in inputs)
+    if total_weight == 0:
+        return JsonResponse({"error": "Total weight must be greater than 0."}, status=400)
+
+    combined_embedding = [0.0] * 384
+    
+    element_idx = 0
+    for item in inputs:
+        weight = item.get("weight", 1)
+        normalized_w = weight / total_weight
+        
+        vec = None
+        if item.get("type") == "element":
+            vec = element_embeddings[element_idx]
+            element_idx += 1
+        elif item.get("type") == "movie":
+            vec = movie_embeddings_map[item.get("id")]
+            
+        for i in range(384):
+            combined_embedding[i] += vec[i] * normalized_w
+
+    embedding = combined_embedding
+
+    logger.debug("Combined embedding calculated")
 
     rpc_params = {
         "query_embedding": embedding,
@@ -260,10 +383,13 @@ def search(request):
 
     movies = response.data or []
     logger.debug("Supabase RPC returned %d results", len(movies))
-
+    
     # Store the raw similarity-ordered candidates in cache before sorting.
     # This lets future requests with a different sort_by reuse the same entry.
     set_cached_results(cache_key, movies)
+    
+    from .cache import reset_hit_count
+    reset_hit_count(cache_key)
 
     # Sort and slice for the current response
     movies = sort_movies(movies, sort_by)
@@ -398,3 +524,73 @@ def recommend(request):
     # `scope` tells the frontend whether the result came from the watchlist or all movies.
     scope = "all" if (not scoped or fell_back) else "watchlist"
     return JsonResponse({"result": result, "scope": scope})
+
+
+@csrf_exempt
+def generate_pixel_sprite(request):
+    prompt = request.GET.get('prompt', 'a simple red potion bottle, white background')
+    supabase = get_client()
+    
+    try:
+        # Check Supabase cache
+        resp = supabase.table("sprites").select("image_data").eq("prompt", prompt).execute()
+        if resp.data and len(resp.data) > 0:
+            return JsonResponse({"image_data": resp.data[0]["image_data"]})
+    except Exception as e:
+        logger.warning("Supabase cache check failed: %s", e)
+
+    try:
+        # STEP 1: Search Image via DuckDuckGo
+        with DDGS() as ddgs:
+            results = list(ddgs.images(prompt + " clip art", max_results=1))
+            if not results:
+                return JsonResponse({"error": "No image found"}, status=404)
+            image_url = results[0]["image"]
+        
+        # Download image
+        img_res = requests.get(image_url, timeout=10)
+        img_res.raise_for_status()
+        
+        original_img = Image.open(io.BytesIO(img_res.content)).convert("RGB")
+        
+        # Crop to 1:1 aspect ratio
+        min_dim = min(original_img.size)
+        original_img = ImageOps.fit(original_img, (min_dim, min_dim))
+
+        
+        # STEP 2: Remove Background
+        if remover:
+            img_no_bg = remover.process(original_img)
+        else:
+            img_no_bg = original_img.convert("RGBA")
+            
+        # STEP 3: Downscale to 18x18
+        small_img = img_no_bg.resize((18, 18), resample=Image.NEAREST)
+
+        # STEP 4: Add Border
+        final_img = add_border(small_img, border_color=(0, 0, 0, 255))
+
+        # STEP 5: Apply Palette
+        palette_img = Image.new('P', (1, 1))
+        palette_img.putpalette(PALETTE + [0]*(768 - len(PALETTE))) 
+        
+        alpha = final_img.getchannel('A')
+        final_img = final_img.convert("RGB").quantize(palette=palette_img, dither=Image.NONE).convert("RGBA")
+        final_img.putalpha(alpha)
+
+        buffer = io.BytesIO()
+        final_img.save(buffer, format="PNG")
+        import base64
+        img_b64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        
+        try:
+            # Save to Supabase cache
+            supabase.table("sprites").insert({"prompt": prompt, "image_data": img_b64}).execute()
+        except Exception as e:
+            logger.warning("Supabase cache save failed: %s", e)
+            
+        return JsonResponse({"image_data": img_b64})
+
+    except Exception as e:
+        logger.error("Failed to generate sprite: %s", e)
+        return JsonResponse({"error": str(e)}, status=500)

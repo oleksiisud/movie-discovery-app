@@ -144,6 +144,14 @@
     }
 
     @if (selectedNode?.type !== 'hub') {
+    <li (click)="onMenuAction('+1 Weight')">
+      <span class="material-symbols-rounded">exposure_plus_1</span>
+      <span>Add Weight</span>
+    </li>
+    <li (click)="onMenuAction('Reset Weight')">
+      <span class="material-symbols-rounded">exposure_zero</span>
+      <span>Reset Weight</span>
+    </li>
     <li (click)="onMenuAction('Duplicate')">
       <span class="material-symbols-rounded">content_copy</span>
       <span>Duplicate</span>
