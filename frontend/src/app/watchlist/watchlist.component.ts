@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, inject, OnInit, ChangeDetectorRef, HostListener } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
@@ -13,26 +13,26 @@ export interface Emotion {
 }
 
 export const EMOTIONS: Emotion[] = [
-  { name: 'happy', emoji: '😄', label: 'Happy' },
-  { name: 'sad', emoji: '😢', label: 'Sad' },
-  { name: 'angry', emoji: '😡', label: 'Angry' },
-  { name: 'anxious', emoji: '😰', label: 'Anxious' },
-  { name: 'bored', emoji: '😑', label: 'Bored' },
-  { name: 'excited', emoji: '🤩', label: 'Excited' },
-  { name: 'playful', emoji: '🎭', label: 'Playful' },
-  { name: 'lost', emoji: '🤷', label: 'Lost' },
-  { name: 'reflective', emoji: '🤔', label: 'Reflective' },
-  { name: 'brave', emoji: '🦁', label: 'Brave' },
-  { name: 'scared', emoji: '😱', label: 'Scared' },
-  { name: 'hopeful', emoji: '🌱', label: 'Hopeful' },
-  { name: 'nostalgic', emoji: '🌅', label: 'Nostalgic' },
-  { name: 'curious', emoji: '🔍', label: 'Curious' },
-  { name: 'frustrated', emoji: '😤', label: 'Frustrated' },
-  { name: 'romantic', emoji: '💕', label: 'Romantic' },
-  { name: 'lonely', emoji: '🚶🏻', label: 'Lonely' },
-  { name: 'depressed', emoji: '😔', label: 'Depressed' },
-  { name: 'jealous', emoji: '😒', label: 'Jealous' },
-  { name: 'overwhelmed', emoji: '😵', label: 'Overwhelmed' },
+  { name: 'happy', emoji: '/emoji/01happy.png', label: 'Happy' },
+  { name: 'sad', emoji: '/emoji/02sad.png', label: 'Sad' },
+  { name: 'angry', emoji: '/emoji/03angry.png', label: 'Angry' },
+  { name: 'anxious', emoji: '/emoji/04anxious.png', label: 'Anxious' },
+  { name: 'bored', emoji: '/emoji/05bored.png', label: 'Bored' },
+  { name: 'excited', emoji: '/emoji/06excited.png', label: 'Excited' },
+  { name: 'playful', emoji: '/emoji/07playful.png', label: 'Playful' },
+  { name: 'lost', emoji: '/emoji/08lost.png', label: 'Lost' },
+  { name: 'reflective', emoji: '/emoji/09reflective.png', label: 'Reflective' },
+  { name: 'brave', emoji: '/emoji/10brave.png', label: 'Brave' },
+  { name: 'scared', emoji: '/emoji/11scared.png', label: 'Scared' },
+  { name: 'hopeful', emoji: '/emoji/12hopeful.png', label: 'Hopeful' },
+  { name: 'nostalgic', emoji: '/emoji/13nostalgic.png', label: 'Nostalgic' },
+  { name: 'curious', emoji: '/emoji/14curious.png', label: 'Curious' },
+  { name: 'frustrated', emoji: '/emoji/15frustrated.png', label: 'Frustrated' },
+  { name: 'romantic', emoji: '/emoji/16romantic.png', label: 'Romantic' },
+  { name: 'lonely', emoji: '/emoji/17lonely.png', label: 'Lonely' },
+  { name: 'depressed', emoji: '/emoji/18depressed.png', label: 'Depressed' },
+  { name: 'jealous', emoji: '/emoji/19jealous.png', label: 'Jealous' },
+  { name: 'overwhelmed', emoji: '/emoji/20overwhelmed.png', label: 'Overwhelmed' },
 ];
 
 export interface MovieResult {
@@ -42,6 +42,7 @@ export interface MovieResult {
   overview: string;
   release_year: number;
   similarity: number;
+  poster_path?: string | null;
 }
 
 @Component({
@@ -61,6 +62,7 @@ export class WatchlistComponent implements OnInit {
   entries: WatchlistEntry[] = [];
   loading = true;
   error = '';
+  openMenuId: number | null = null;
 
   // Mood modal state
   readonly emotions = EMOTIONS;
@@ -112,18 +114,45 @@ export class WatchlistComponent implements OnInit {
         this.entries[idx] = { ...this.entries[idx], status: newStatus };
         this.entries = [...this.entries];
       }
+      this.openMenuId = null; // Close menu after action
     } catch (err: any) {
       console.error('Toggle error:', err);
     }
+    this.cdr.markForCheck();
   }
 
   async remove(entry: WatchlistEntry): Promise<void> {
     try {
       await this.supabase.removeFromWatchlist(entry.movie_id);
       this.entries = this.entries.filter(e => e.id !== entry.id);
+      this.openMenuId = null; // Close menu after action
     } catch (err: any) {
       console.error('Remove error:', err);
     }
+  }
+
+  toggleMenu(entryId: number, event: Event): void {
+    event.stopPropagation();
+    this.openMenuId = this.openMenuId === entryId ? null : entryId;
+  }
+
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: MouseEvent) {
+    const target = event.target as HTMLElement;
+    if (this.openMenuId) {
+      this.openMenuId = null;
+    }
+  }
+
+  getGenresList(entry: WatchlistEntry): string {
+    return entry.movies?.movie_genres?.map(mg => mg.genres.name).join(', ') ?? '';
+  }
+
+  formatRuntime(minutes: number | null | undefined): string {
+    if (!minutes) return '';
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
   }
 
   // Mood modal

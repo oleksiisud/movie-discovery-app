@@ -6,9 +6,15 @@
       <button class="nav-btn" id="nav-btn-account" title="Account Menu" aria-label="Account Menu"
         (click)="toggleDropdown($event)">
         @if (session$ | async) {
-        <span class="user-avatar">{{ getUserInitials() }}</span>
+          <div class="user-avatar">
+            @if (getAvatarUrl()) {
+              <img [src]="getAvatarUrl()" alt="Avatar" class="avatar-img-nav" />
+            } @else {
+              {{ getUserInitials() }}
+            }
+          </div>
         } @else {
-        <span class="material-symbols-rounded">account_circle</span>
+          <span class="material-symbols-rounded">account_circle</span>
         }
       </button>
       <div class="dropdown-menu" [class.show]="isDropdownOpen">
@@ -20,10 +26,10 @@
           <span class="material-symbols-rounded">bookmark</span>
           Watchlist
         </a>
-        <button class="dropdown-item" (click)="isDropdownOpen = false">
+        <a class="dropdown-item" [routerLink]="['/settings']" (click)="isDropdownOpen = false">
           <span class="material-symbols-rounded">settings</span>
           Settings
-        </button>
+        </a>
         <button class="dropdown-item text-danger" (click)="logout()">
           <span class="material-symbols-rounded">logout</span>
           Log out

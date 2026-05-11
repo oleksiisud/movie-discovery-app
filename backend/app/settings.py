@@ -91,21 +91,29 @@ DATABASES = {
     }
 }
 
-# Cache — Redis via django-redis
+# Cache
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+REDIS_URL = os.getenv("REDIS_URL") or os.getenv("REDISCLOUD_URL")
 
-CACHES = {
-    "default": {
-        "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": REDIS_URL,
-        "OPTIONS": {
-            "CLIENT_CLASS": "django_redis.client.DefaultClient",
-            "IGNORE_EXCEPTIONS": True,   # graceful fallback when Redis is down
-            "COMPRESSOR": "django_redis.compressors.zlib.ZlibCompressor",
-        },
+if REDIS_URL and not REDIS_URL.startswith("redis://localhost"):
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": REDIS_URL,
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+                "IGNORE_EXCEPTIONS": True,   # graceful fallback when Redis is down
+                "COMPRESSOR": "django_redis.compressors.zlib.ZlibCompressor",
+            },
+        }
     }
-}
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "movie-discovery-cache",
+        }
+    }
 
 # Default cache TTL (seconds). Override with CACHE_TTL in .env.
 CACHE_TTL = int(os.getenv("CACHE_TTL", 3600))

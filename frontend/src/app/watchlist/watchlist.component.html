@@ -1,29 +1,21 @@
 <div class="page">
 
   <header class="page-header">
-    <h1 class="page-title">Your Watchlist</h1>
-    <p class="page-subtitle">Films you've saved and watched</p>
+    <h1 class="logo gradient-text">WATCHLIST</h1>
+    <p class="tagline">Films you've saved</p>
   </header>
-
-  <!-- Tabs -->
-  <div class="tab-bar" role="tablist">
-    <button class="tab-btn" role="tab" [class.active]="activeTab === 'saved'" (click)="activeTab = 'saved'"
-      id="watchlist-tab-saved" [attr.aria-selected]="activeTab === 'saved'">
-      Saved
-      <span class="tab-count">{{ savedEntries.length }}</span>
-    </button>
-    <button class="tab-btn" role="tab" [class.active]="activeTab === 'watched'" (click)="activeTab = 'watched'"
-      id="watchlist-tab-watched" [attr.aria-selected]="activeTab === 'watched'">
-      Watched
-      <span class="tab-count">{{ watchedEntries.length }}</span>
-    </button>
-  </div>
 
   <!-- Loading skeleton -->
   @if (loading) {
-  <div class="skeleton-list">
-    @for (i of [1, 2, 3]; track i) {
-    <div class="skeleton-card"></div>
+  <div class="skeleton-grid">
+    @for (i of [1, 2, 3, 4, 5, 6, 7, 8]; track i) {
+    <div class="skeleton-card">
+      <div class="skeleton-poster"></div>
+      <div class="skeleton-info">
+        <div class="skeleton-text title"></div>
+        <div class="skeleton-text meta"></div>
+      </div>
+    </div>
     }
   </div>
 
@@ -34,39 +26,71 @@
   <!-- Empty state -->
   } @else if (activeEntries.length === 0) {
   <div class="empty-state">
-    <span class="material-symbols-rounded empty-icon">
-      {{ activeTab === 'saved' ? 'bookmark' : 'movie' }}
-    </span>
-    <p class="empty-title">
-      {{ activeTab === 'saved' ? 'No saved films yet' : 'Nothing watched yet' }}
-    </p>
-    <p class="empty-subtitle">
-      {{ activeTab === 'saved'
-      ? 'Discover films and save them here to watch later.'
-      : 'Mark films as watched to track what you\'ve seen.' }}
-    </p>
-    <a class="discover-btn" [routerLink]="['/']" id="btn-discover-from-empty">Discover Films</a>
+    <span class="material-symbols-rounded empty-icon">bookmark</span>
+    <p class="empty-title">No saved films yet</p>
+    <p class="empty-subtitle">Discover films and save them here to watch later.</p>
+    <a class="btn btn-primary" [routerLink]="['/']">Discover Films</a>
   </div>
 
   <!-- Card list -->
   } @else {
-  <div class="card-list">
+  <div class="movie-grid" (click)="openMenuId = null">
     @for (entry of activeEntries; track entry.id; let i = $index) {
-    <div class="card" [style.animation-delay]="i * 60 + 'ms'">
-      <div class="card-rank">{{ i + 1 }}</div>
-      <div class="card-body">
-        <div class="card-header">
-          <h3 class="card-title">{{ entry.movies?.title ?? 'Unknown Title' }}</h3>
-          <span class="card-year">{{ entry.movies?.release_year }}</span>
+    <div class="movie-card" [style.animation-delay]="i * 50 + 'ms'">
+      <div class="poster-container">
+        @if (entry.movies?.poster_path) {
+        <img [src]="'https://image.tmdb.org/t/p/w500' + entry.movies?.poster_path" alt="Poster" class="movie-poster" />
+        } @else {
+        <div class="poster-placeholder">
+          <span class="material-symbols-rounded">movie</span>
         </div>
-        <p class="card-overview">{{ entry.movies?.overview }}</p>
-        <div class="card-actions">
-          <button class="action-btn action-btn--toggle" (click)="toggleStatus(entry)" [id]="'btn-toggle-' + entry.id">
-            {{ activeTab === 'saved' ? 'Mark Watched' : 'Move to Saved' }}
+        }
+
+        <div class="stats-badges">
+          @if (entry.movies?.vote_average) {
+          <div class="badge rating">
+            <span class="material-symbols-rounded">star</span>
+            {{ entry.movies?.vote_average?.toFixed(1) }}
+          </div>
+          }
+          @if (entry.movies?.popularity) {
+          <div class="badge popularity">
+            <span class="material-symbols-rounded">trending_up</span>
+            {{ entry.movies?.popularity?.toFixed(0) }}
+          </div>
+          }
+        </div>
+
+        <div class="menu-container">
+          <button class="menu-trigger" (click)="toggleMenu(entry.id, $event)" [class.active]="openMenuId === entry.id">
+            <span class="material-symbols-rounded">more_vert</span>
           </button>
-          <button class="action-btn action-btn--remove" (click)="remove(entry)" [id]="'btn-remove-' + entry.id">
-            Remove
-          </button>
+          @if (openMenuId === entry.id) {
+          <div class="menu-dropdown glass" (click)="$event.stopPropagation()">
+            <button (click)="toggleStatus(entry)">
+              <span class="material-symbols-rounded">visibility</span>
+              Mark as Seen
+            </button>
+            <button class="btn-delete" (click)="remove(entry)">
+              <span class="material-symbols-rounded">delete</span>
+              Delete
+            </button>
+          </div>
+          }
+        </div>
+      </div>
+
+      <div class="movie-info">
+        <h3 class="movie-title">
+          {{ entry.movies?.title }}
+          <span class="movie-year">({{ entry.movies?.release_year }})</span>
+        </h3>
+        <div class="movie-meta">
+          @if (entry.movies?.runtime) {
+          <span class="runtime">{{ formatRuntime(entry.movies?.runtime) }}</span>
+          <span class="dot">·</span>
+          }
+          <span class="genres">{{ getGenresList(entry) }}</span>
         </div>
       </div>
     </div>
@@ -84,29 +108,31 @@
 
 <!-- Mood Modal -->
 @if (modalStep !== 'closed') {
-<div class="modal-overlay" (click)="closeModal()" id="modal-overlay" role="dialog" aria-modal="true">
-  <div class="modal" (click)="$event.stopPropagation()">
+<div class="modal-overlay glass" (click)="closeModal()" id="modal-overlay" role="dialog" aria-modal="true">
+  <div class="modal glass-surface" (click)="$event.stopPropagation()">
 
     <!-- Close button -->
-    <button class="modal-close" (click)="closeModal()" id="btn-modal-close" aria-label="Close">✕</button>
+    <button class="modal-close btn-icon" (click)="closeModal()" aria-label="Close">
+      <span class="material-symbols-rounded">close</span>
+    </button>
 
     <!-- Step 1: Emotion Picker -->
     @if (modalStep === 'pick') {
     <div class="modal-step" id="modal-step-pick">
-      <h2 class="modal-title">How are you feeling?</h2>
+      <h2 class="modal-title gradient-text">How are you feeling?</h2>
       <p class="modal-subtitle">Pick a mood and we'll find a film from your watchlist.</p>
 
       <div class="emotion-grid">
         @for (emotion of emotions; track emotion.name) {
         <button class="emotion-pill" [class.selected]="selectedEmotion?.name === emotion.name"
           (click)="selectEmotion(emotion)" [id]="'btn-emotion-' + emotion.name">
-          <span class="emotion-pill_emoji">{{ emotion.emoji }}</span>
+          <img [src]="emotion.emoji" class="emotion-pill_image" [alt]="emotion.label" />
           <span class="emotion-pill_label">{{ emotion.label }}</span>
         </button>
         }
       </div>
 
-      <button class="modal-confirm-btn" id="btn-emotion-confirm" [disabled]="!selectedEmotion"
+      <button class="modal-confirm-btn btn btn-primary" id="btn-emotion-confirm" [disabled]="!selectedEmotion"
         (click)="confirmEmotion()">
         Find a Movie
       </button>
@@ -129,47 +155,56 @@
       @else if (recommendError) {
       <div class="rec-empty">
         <p class="rec-empty_text">{{ recommendError }}</p>
-        <button class="modal-back-btn" (click)="openMoodPicker()" id="btn-back-to-pick">Try Again</button>
+        <button class="modal-back-btn btn btn-ghost" (click)="openMoodPicker()" id="btn-back-to-pick">Try Again</button>
       </div>
       }
 
       <!-- Result card -->
       @else if (recommendation) {
       <div class="rec-header">
-        <span class="rec-mood-badge">{{ selectedEmotion?.emoji }} {{ selectedEmotion?.label }}</span>
-        <h2 class="modal-title">We think you'd enjoy…</h2>
+        <span class="rec-mood-badge chip chip-accent">
+          <img [src]="selectedEmotion?.emoji" class="rec-badge_image" />
+          {{ selectedEmotion?.label }}
+        </span>
+        <h2 class="modal-title gradient-text">We think you'd enjoy…</h2>
       </div>
 
-      <div class="rec-card">
-        <div class="rec-card_title-row">
-          <h3 class="rec-card_title">{{ recommendation.title }}</h3>
-          <span class="rec-card_year">{{ recommendation.release_year }}</span>
+      <div class="rec-card card">
+        @if (recommendation.poster_path) {
+        <div class="rec-poster">
+          <img [src]="'https://image.tmdb.org/t/p/w500' + recommendation.poster_path" alt="Poster" />
         </div>
-        <p class="rec-card_overview">{{ recommendation.overview }}</p>
-        <div class="rec-card_score">
-          <span class="rec-card_score-dot"></span>
-          {{ (recommendation.similarity * 100).toFixed(0) }}% mood match
-        </div>
-        @if (recommendScope === 'all') {
-        <p class="rec-card_scope-notice">No matches found in your watchlist — showing from all movies instead.</p>
         }
+        <div class="rec-content">
+          <div class="rec-card_title-row">
+            <h3 class="rec-card_title">{{ recommendation.title }}</h3>
+            <span class="rec-card_year">{{ recommendation.release_year }}</span>
+          </div>
+          <p class="rec-card_overview">{{ recommendation.overview }}</p>
+          <div class="rec-card_score">
+            <span class="rec-card_score-dot"></span>
+            {{ (recommendation.similarity * 100).toFixed(0) }}% mood match
+          </div>
+          @if (recommendScope === 'all') {
+          <p class="rec-card_scope-notice">No matches found in your watchlist — showing from all movies instead.</p>
+          }
+        </div>
       </div>
 
 
       <div class="rec-actions">
-        <button class="rec-action-link" id="btn-rec-another" (click)="recommendAnother()">
-          Recommend another from watchlist
+        <button class="btn btn-accent" id="btn-rec-another" (click)="recommendAnother()">
+          Recommend another
         </button>
-        <span class="rec-action-sep">·</span>
-        <button class="rec-action-link rec-action-link--dim" id="btn-rec-all" (click)="recommendFromAll()">
-          Recommend from all movies
+        <button class="btn btn-ghost" id="btn-rec-all" (click)="recommendFromAll()">
+          Search all movies
         </button>
       </div>
       }
 
       <!-- Back link -->
-      <button class="modal-back-btn" id="btn-result-back" (click)="openMoodPicker()">
-        &lt;-- Change mood
+      <button class="modal-back-btn btn btn-ghost" id="btn-result-back" (click)="openMoodPicker()">
+        ← Change mood
       </button>
 
     </div>

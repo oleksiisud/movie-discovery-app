@@ -18,6 +18,13 @@ export interface WatchlistMovie {
   overview: string;
   release_year: number;
   tmdb_id: number;
+  poster_path: string | null;
+  vote_average: number | null;
+  popularity: number | null;
+  runtime: number | null;
+  movie_genres?: {
+    genres: Genre;
+  }[];
 }
 
 export interface WatchlistEntry {
@@ -88,8 +95,27 @@ export class SupabaseService {
     return this.client.auth.signUp({ email, password });
   }
 
+  async resetPassword(email: string) {
+    return this.client.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + '/reset-password',
+    });
+  }
+
+  async signInWithGoogle() {
+    return this.client.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin,
+      },
+    });
+  }
+
   async signOut() {
     return this.client.auth.signOut();
+  }
+
+  async updateUser(data: { password?: string; data?: any }) {
+    return this.client.auth.updateUser(data);
   }
 
   // Watchlist
@@ -108,14 +134,22 @@ export class SupabaseService {
           title,
           overview,
           release_year,
-          tmdb_id
+          tmdb_id,
+          poster_path,
+          vote_average,
+          popularity,
+          runtime,
+          movie_genres (
+            genres (
+              id,
+              name
+            )
+          )
         )
       `)
       .eq('user_id', this.currentUser.id)
       .order('created_at', { ascending: false });
     if (error) throw error;
-
-    console.log('Raw watchlist data:', data);
 
     const entries = (data ?? []).map((row: any) => ({
       ...row,
@@ -173,5 +207,52 @@ export class SupabaseService {
       return [];
     }
     return (data ?? []) as Genre[];
+  }
+
+  // Profiles & Storage
+
+  async uploadAvatar(file: File): Promise<string> {
+    if (!this.client || !this.currentUser) throw new Error('Not authenticated');
+
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${this.currentUser.id}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+    const filePath = `avatars/${fileName}`;
+
+    const { error: uploadError } = await this.client.storage
+      .from('avatars')
+      .upload(filePath, file);
+
+    if (uploadError) throw uploadError;
+
+    return filePath;
+  }
+
+  getPublicUrl(path: string): string {
+    if (!this.client) return '';
+    const { data } = this.client.storage.from('avatars').getPublicUrl(path);
+    return data.publicUrl;
+  }
+
+  async isDisplayNameUnique(displayName: string): Promise<boolean> {
+    if (!this.client) return true;
+
+    // Attempt to query profiles table. If it fails (e.g. doesn't exist), we fallback to true
+    // but log the error for development awareness.
+    try {
+      const { data, error } = await this.client
+        .from('profiles')
+        .select('display_name')
+        .eq('display_name', displayName)
+        .maybeSingle();
+
+      if (error) {
+        console.warn('Profiles table check failed:', error.message);
+        return true;
+      }
+
+      return !data;
+    } catch (e) {
+      return true;
+    }
   }
 }

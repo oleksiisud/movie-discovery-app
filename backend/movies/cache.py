@@ -10,16 +10,26 @@ logger = logging.getLogger(__name__)
 _KEY_PREFIX = "movie_search"
 
 
-def make_cache_key(inputs: list[str], filters: dict | None = None) -> str:
+def make_cache_key(inputs: list, filters: dict | None = None) -> str:
     """
     Build a deterministic cache key from query inputs and optional filters.
 
-    :param inputs: List of query inputs
+    :param inputs: List of query input dicts
     :param filters: Optional dict of active filters (genre_ids, language, etc.)
     :return: Cache key string
     """
 
-    normalized = ",".join(sorted(s.lower().strip() for s in inputs))
+    input_strs = []
+    for i in inputs:
+        typ = i.get("type")
+        weight = i.get("weight", 1)
+        if typ == "element":
+            word = i.get("word", "").lower().strip()
+            input_strs.append(f"element:{word}:{weight}")
+        elif typ == "movie":
+            input_strs.append(f"movie:{i.get('id')}:{weight}")
+            
+    normalized = ",".join(sorted(input_strs))
 
     # Stable JSON representation of structural filters for hashing.
     filter_str = ""
@@ -66,3 +76,24 @@ def set_cached_results(key: str, data: list, ttl: int | None = None) -> None:
         ttl = getattr(settings, "CACHE_TTL", 3600)
     cache.set(key, data, timeout=ttl)
     logger.debug("Cache SET  key=%s ttl=%ss len=%d", key, ttl, len(data))
+
+def get_and_increment_hit_count(key: str) -> int:
+    """
+    Increment and return the hit count for a cache key.
+    """
+    counter_key = f"{key}_counter"
+    val = cache.get(counter_key)
+    if val is None:
+        val = 0
+    val += 1
+    ttl = getattr(settings, "CACHE_TTL", 3600)
+    cache.set(counter_key, val, timeout=ttl)
+    return val
+
+def reset_hit_count(key: str) -> None:
+    """
+    Reset the hit count for a cache key.
+    """
+    counter_key = f"{key}_counter"
+    ttl = getattr(settings, "CACHE_TTL", 3600)
+    cache.set(counter_key, 0, timeout=ttl)

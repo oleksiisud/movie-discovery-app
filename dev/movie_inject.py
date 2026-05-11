@@ -327,4 +327,4 @@ def run_injection(target_count=10000, batch_size=16):
     print("\nInjection complete.")
 
 if __name__ == "__main__":
-    run_injection(target_count=1000)
+    run_injection(target_count=int(input("Target count: ")))
