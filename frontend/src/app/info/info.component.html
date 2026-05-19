@@ -1,0 +1,38 @@
+@if (isVisible) {
+<div class="modal-overlay glass" (click)="closeModal()" id="modal-overlay" role="dialog" aria-modal="true">
+  <div class="modal glass-surface" (click)="$event.stopPropagation()">
+
+    <!-- Close button -->
+    <button class="modal-close btn-icon" (click)="closeModal()" aria-label="Close">
+      <span class="material-symbols-rounded">close</span>
+    </button>
+
+    <h1 class="logo gradient-text">CINEMIXER</h1>
+    <h2 class="modal-title">How to use the Graph</h2>
+    <p class="modal-subtitle">Discover movies by mixing and matching elements.</p>
+
+    <div class="modal-instructions">
+      <ul>
+        <li><strong>Add Nodes:</strong> Type any word or phrase in the search bar to add it to
+          the graph.</li>
+        <li><strong>Create Hubs:</strong> Click on an element node to create a "hub". Mix multiple elements by adding
+          them to the hub.</li>
+        <li><strong>Generate Movies:</strong> Once you have elements in your hub, it will find movies matching your mix!
+        </li>
+        <li><strong>Interact:</strong> Drag nodes around, right-click for more options like adding weight or removing
+          nodes.</li>
+      </ul>
+    </div>
+
+    <div class="never-show-again-container">
+      <label class="checkbox-label">
+        <input type="checkbox" [(ngModel)]="neverShowAgain">
+        Don't show this again
+      </label>
+    </div>
+
+    <button class="btn btn-primary" style="width: 100%; margin-top: 1rem;" (click)="closeModal()">Got it!</button>
+
+  </div>
+</div>
+}

@@ -122,6 +122,24 @@
   padding: 0;
 }
 
+.info-btn {
+  position: fixed;
+  bottom: 36px;
+  left: 36px;
+  z-index: 100;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-md);
+  padding: 0;
+}
+
+@media (max-width: 768px) {
+  .search-wrapper {
+    bottom: 110px;
+    width: calc(100% - 48px);
+  }
+}
+
 .filter-panel {
   position: fixed;
   bottom: 100px;

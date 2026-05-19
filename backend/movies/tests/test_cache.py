@@ -5,13 +5,18 @@ from django.test import TestCase, override_settings
 from django.core.cache import cache
 
 from movies.cache import make_cache_key, get_cached_results, set_cached_results
+from movies.views import serialize_movie
 
 # Fixtures
 
-INPUTS = ["action", "comedy"]
+INPUTS = [
+    {"type": "element", "word": "action", "weight": 1},
+    {"type": "element", "word": "comedy", "weight": 1}
+]
 RESULTS = [
     {
         "id": 1,
+        "tmdb_id": 1,
         "title": "Hot Fuzz",
         "overview": "A top London cop is transferred to a rural town.",
         "release_year": 2007,
@@ -37,23 +42,37 @@ class MakeCacheKeyTests(TestCase):
         """
         Test that make_cache_key() returns the same key for the same inputs regardless of order.
         """
-        key1 = make_cache_key(["action", "comedy"])
-        key2 = make_cache_key(["comedy", "action"])
+        key1 = make_cache_key([
+            {"type": "element", "word": "action", "weight": 1},
+            {"type": "element", "word": "comedy", "weight": 1}
+        ])
+        key2 = make_cache_key([
+            {"type": "element", "word": "comedy", "weight": 1},
+            {"type": "element", "word": "action", "weight": 1}
+        ])
         self.assertEqual(key1, key2)
 
     def test_different_inputs_give_different_keys(self):
         """
         Test that make_cache_key() returns different keys for different inputs.
         """
-        key1 = make_cache_key(["action", "comedy"])
-        key2 = make_cache_key(["drama", "thriller"])
+        key1 = make_cache_key([
+            {"type": "element", "word": "action", "weight": 1},
+            {"type": "element", "word": "comedy", "weight": 1}
+        ])
+        key2 = make_cache_key([
+            {"type": "element", "word": "drama", "weight": 1},
+            {"type": "element", "word": "thriller", "weight": 1}
+        ])
         self.assertNotEqual(key1, key2)
 
     def test_key_starts_with_prefix(self):
         """
         Test that make_cache_key() returns a key that starts with the prefix "movie_search:".
         """
-        key = make_cache_key(["horror"])
+        key = make_cache_key([
+            {"type": "element", "word": "horror", "weight": 1}
+        ])
         self.assertTrue(key.startswith("movie_search:"))
 
 
@@ -90,7 +109,9 @@ class CacheGetSetTests(TestCase):
         Test that set_cached_results() with ttl=None uses settings.CACHE_TTL.
         """
         with self.settings(CACHE_TTL=120):
-            key = make_cache_key(["sci-fi"])
+            key = make_cache_key([
+                {"type": "element", "word": "sci-fi", "weight": 1}
+            ])
             set_cached_results(key, RESULTS)  # no explicit ttl
             self.assertEqual(get_cached_results(key), RESULTS)
 
@@ -124,7 +145,7 @@ class SearchViewCacheTests(TestCase):
     @patch("movies.views.set_cached_results")
     @patch("movies.views.get_cached_results", return_value=None)  # force MISS
     @patch("movies.views.get_client")
-    @patch("movies.views.get_embedding", return_value=[0.1] * 384)
+    @patch("movies.views.get_embedding", return_value=[[0.1] * 384, [0.1] * 384])
     def test_cache_miss_calls_embedding_and_supabase(
         self, mock_embed, mock_client, mock_cache_get, mock_cache_set
     ):
@@ -139,7 +160,7 @@ class SearchViewCacheTests(TestCase):
         mock_rpc = MagicMock()
         mock_rpc.rpc.return_value.execute.return_value.data = [
             {
-                "tmdb_id": 1, "title": "Hot Fuzz", "overview": "...",
+                "id": 1, "tmdb_id": 1, "title": "Hot Fuzz", "overview": "...",
                 "release_year": 2007, "similarity": 0.91,
             }
         ]
@@ -170,14 +191,14 @@ class SearchViewCacheTests(TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertTrue(body["cached"])
-        self.assertEqual(body["results"], RESULTS)
+        self.assertEqual(body["results"], [serialize_movie(m) for m in RESULTS])
 
         mock_embed.assert_not_called()
 
     @patch("movies.views.set_cached_results")
     @patch("movies.views.get_cached_results", return_value=None)
     @patch("movies.views.get_client")
-    @patch("movies.views.get_embedding", return_value=[0.5] * 384)
+    @patch("movies.views.get_embedding", return_value=[[0.5] * 384, [0.5] * 384])
     def test_redis_down_still_returns_results(
         self, mock_embed, mock_client, mock_cache_get, mock_cache_set
     ):
@@ -195,7 +216,7 @@ class SearchViewCacheTests(TestCase):
         mock_rpc = MagicMock()
         mock_rpc.rpc.return_value.execute.return_value.data = [
             {
-                "tmdb_id": 2, "title": "Shaun of the Dead", "overview": "...",
+                "id": 2, "tmdb_id": 2, "title": "Shaun of the Dead", "overview": "...",
                 "release_year": 2004, "similarity": 0.88,
             }
         ]
@@ -207,3 +228,179 @@ class SearchViewCacheTests(TestCase):
         body = response.json()
         self.assertEqual(len(body["results"]), 1)
         self.assertEqual(body["results"][0]["title"], "Shaun of the Dead")
+
+    @patch("movies.views.set_cached_results")
+    @patch("movies.views.get_cached_results", return_value=None)
+    @patch("movies.views.get_client")
+    @patch("movies.views.get_embedding", return_value=[[0.1] * 384])
+    def test_input_movie_is_filtered_from_results(
+        self, mock_embed, mock_client, mock_cache_get, mock_cache_set
+    ):
+        """
+        Input movies must be filtered out of the returned search results on a cache miss.
+        """
+        mock_rpc = MagicMock()
+        mock_rpc.rpc.return_value.execute.return_value.data = [
+            {
+                "id": 10, "tmdb_id": 10, "title": "Input Movie", "overview": "...",
+                "release_year": 2010, "similarity": 0.95,
+            },
+            {
+                "id": 11, "tmdb_id": 11, "title": "Other Movie", "overview": "...",
+                "release_year": 2011, "similarity": 0.90,
+            }
+        ]
+        mock_client.return_value = mock_rpc
+
+        # Pass "Input Movie" (ID 10) as one of the inputs
+        inputs = [
+            {"type": "movie", "id": 10, "weight": 1},
+            {"type": "element", "word": "comedy", "weight": 1}
+        ]
+
+        # Mock the Supabase movies table lookup for embedding retrieval
+        mock_table = MagicMock()
+        mock_table.select.return_value.in_.return_value.execute.return_value.data = [
+            {"id": 10, "embedding": [0.1] * 384}
+        ]
+        mock_client.return_value.table.return_value = mock_table
+
+        response = self._post(inputs)
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(len(body["results"]), 1)
+        self.assertEqual(body["results"][0]["id"], 11)
+        self.assertEqual(body["results"][0]["title"], "Other Movie")
+
+    @patch("movies.views.get_embedding")
+    @patch("movies.views.get_cached_results")
+    def test_input_movie_is_filtered_from_cache_hits(self, mock_cache_get, mock_embed):
+        """
+        Input movies must be filtered out of results even on a cache hit.
+        """
+        mock_cache_get.return_value = [
+            {
+                "id": 10, "tmdb_id": 10, "title": "Input Movie", "overview": "...",
+                "release_year": 2010, "similarity": 0.95,
+            },
+            {
+                "id": 11, "tmdb_id": 11, "title": "Other Movie", "overview": "...",
+                "release_year": 2011, "similarity": 0.90,
+            }
+        ]
+
+        inputs = [
+            {"type": "movie", "id": 10, "weight": 1},
+            {"type": "element", "word": "comedy", "weight": 1}
+        ]
+
+        response = self._post(inputs)
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertTrue(body["cached"])
+        self.assertEqual(len(body["results"]), 1)
+        self.assertEqual(body["results"][0]["id"], 11)
+        self.assertEqual(body["results"][0]["title"], "Other Movie")
+
+    @patch("movies.views.set_cached_results")
+    @patch("movies.views.get_cached_results", return_value=None)
+    @patch("movies.views.get_client")
+    @patch("movies.views.get_embedding", return_value=[[0.1] * 384])
+    def test_exclude_ids_is_filtered_from_results_on_cache_miss(
+        self, mock_embed, mock_client, mock_cache_get, mock_cache_set
+    ):
+        """
+        Movies listed in exclude_ids must be filtered out of results on a cache miss.
+        """
+        mock_rpc = MagicMock()
+        mock_rpc.rpc.return_value.execute.return_value.data = [
+            {
+                "id": 10, "tmdb_id": 10, "title": "Excluded Movie", "overview": "...",
+                "release_year": 2010, "similarity": 0.95,
+            },
+            {
+                "id": 11, "tmdb_id": 11, "title": "Other Movie", "overview": "...",
+                "release_year": 2011, "similarity": 0.90,
+            }
+        ]
+        mock_client.return_value = mock_rpc
+
+        inputs = [
+            {"type": "movie", "id": 12, "weight": 1},
+            {"type": "element", "word": "comedy", "weight": 1}
+        ]
+
+        mock_table = MagicMock()
+        mock_table.select.return_value.in_.return_value.execute.return_value.data = [
+            {"id": 12, "embedding": [0.1] * 384}
+        ]
+        mock_client.return_value.table.return_value = mock_table
+
+        # Send request with exclude_ids = [10]
+        response = self.client.post(
+            "/api/search/",
+            data=json.dumps({"inputs": inputs, "exclude_ids": [10]}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(len(body["results"]), 1)
+        self.assertEqual(body["results"][0]["id"], 11)
+        self.assertEqual(body["results"][0]["title"], "Other Movie")
+
+    @patch("movies.views.get_embedding")
+    @patch("movies.views.get_cached_results")
+    def test_exclude_ids_is_filtered_from_results_on_cache_hit(self, mock_cache_get, mock_embed):
+        """
+        Movies listed in exclude_ids must be dynamically filtered out of results even on a cache hit.
+        """
+        mock_cache_get.return_value = [
+            {
+                "id": 10, "tmdb_id": 10, "title": "Excluded Movie", "overview": "...",
+                "release_year": 2010, "similarity": 0.95,
+            },
+            {
+                "id": 11, "tmdb_id": 11, "title": "Other Movie", "overview": "...",
+                "release_year": 2011, "similarity": 0.90,
+            }
+        ]
+
+        inputs = [
+            {"type": "movie", "id": 12, "weight": 1},
+            {"type": "element", "word": "comedy", "weight": 1}
+        ]
+
+        # Send request with exclude_ids = [10]
+        response = self.client.post(
+            "/api/search/",
+            data=json.dumps({"inputs": inputs, "exclude_ids": [10]}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertTrue(body["cached"])
+        self.assertEqual(len(body["results"]), 1)
+        self.assertEqual(body["results"][0]["id"], 11)
+        self.assertEqual(body["results"][0]["title"], "Other Movie")
+
+    def test_invalid_exclude_ids_returns_400(self):
+        """
+        If exclude_ids is not a list of integers, return a 400 error.
+        """
+        inputs = [
+            {"type": "movie", "id": 12, "weight": 1},
+            {"type": "element", "word": "comedy", "weight": 1}
+        ]
+
+        response = self.client.post(
+            "/api/search/",
+            data=json.dumps({"inputs": inputs, "exclude_ids": ["invalid"]}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        body = response.json()
+        self.assertEqual(body["error"], "exclude_ids must be a list of integers.")

@@ -22,8 +22,9 @@ A full-stack web application for discovering and picking movies to watch. Users 
 CineMixer is a full-stack web application built for discovering movies using natural language processing. Key features include:
 
 - **Word-combinator search** - enter 2–5 descriptive words/phrases; vector embeddings find the most semantically similar movies in the database.
-- **User authentication** - sign up, log in, and manage your account via AppWrite.
-- **Watchlist** - save movies with a "Want to Watch" or "Watched" status, stored in Supabase. The watchlist route is protected by an auth guard.
+- **Interactive Graph UI** - visual discovery of movies with an interactive graph, where similar movies form connections.
+- **User authentication** - sign up, log in, and manage your account via Supabase Auth.
+- **Watchlist & Settings** - save movies with a "Want to Watch" or "Watched" status, and manage profile settings.
 - **Redis caching** - the Django backend caches search results to reduce redundant embedding lookups.
 - **Docker Compose** - one command spins up Redis, Django, and Angular SSR together.
 
@@ -74,9 +75,11 @@ movie-discovery-app/
 │   ├── src/
 │   │   ├── app/
 │   │   │   ├── search/       # Word-combinator search
+│   │   │   ├── graph/        # Interactive movie discovery graph
 │   │   │   ├── watchlist/    # Watchlist page (auth-guarded)
-│   │   │   ├── account/      # Login / register / profile
+│   │   │   ├── account/      # Login / register / profile / settings
 │   │   │   ├── navbar/       # Global navigation
+│   │   │   ├── info/         # Persistent instruction modal
 │   │   │   └── core/         # Auth guard, Supabase service, config service
 │   │   ├── environments/     # environment.ts / environment.prod.ts
 │   │   └── ...

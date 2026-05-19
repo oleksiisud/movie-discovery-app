@@ -180,6 +180,8 @@ backend/
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `POST` | `/api/search/` | Returns top 10 movies semantically closest to the combined input words |
+| `POST` | `/api/recommend/` | Returns a single movie recommendation based on the user's selected emotion |
+| `GET`  | `/api/sprite/` | Generates a pixel sprite using DuckDuckGo image search and Pillow |
 
 ### `POST /api/search/`
 

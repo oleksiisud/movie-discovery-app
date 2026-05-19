@@ -1,5 +1,7 @@
 import json
 import logging
+import base64
+import numpy as np
 
 import regex as re
 import httpx
@@ -17,11 +19,7 @@ import requests
 from PIL import Image, ImageOps
 from ddgs import DDGS
 
-try:
-    from transparent_background import Remover
-    remover = Remover()
-except Exception as e:
-    remover = None
+
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +52,23 @@ PALETTE = [
     188, 162, 150,   23, 165, 247,  126, 148, 247,  203, 126, 247,
     228,  77,  11,   64, 124, 235,  111, 191, 245
 ]
+
+def remove_background_simple(img, tolerance=30):
+    """
+    Remove background by identifying the top-left pixel color 
+    and making similar pixels transparent.
+    """
+    img = img.convert("RGBA")
+    data = np.array(img)
+    
+    # Take top-left pixel as background color
+    bg_color = data[0, 0, :3]
+    
+    # Create mask for pixels within tolerance of bg_color
+    mask = np.all(np.abs(data[:, :, :3] - bg_color) < tolerance, axis=-1)
+    data[mask, 3] = 0
+    
+    return Image.fromarray(data)
 
 def add_border(img, border_color=(0, 0, 0, 255)):
     width, height = img.size
@@ -259,6 +274,11 @@ def search(request):
             status=400,
         )
 
+    exclude_ids = body.get("exclude_ids", None)
+    if exclude_ids is not None:
+        if not isinstance(exclude_ids, list) or not all(isinstance(i, int) for i in exclude_ids):
+            return JsonResponse({"error": "exclude_ids must be a list of integers."}, status=400)
+
     for item in inputs:
         if not isinstance(item, dict):
             return JsonResponse({"error": "Each input must be an object."}, status=400)
@@ -291,7 +311,16 @@ def search(request):
     sort_by = filters.get("sort_by", "similarity")
     cached = get_cached_results(cache_key)
     if cached is not None:
-        sorted_cached = sort_movies(cached, sort_by)
+        input_movie_ids = {item.get("id") for item in inputs if item.get("type") == "movie"}
+        filtered_cached = [m for m in cached if m.get("id") not in input_movie_ids]
+        
+        # Dynamically filter out explicitly excluded movie IDs
+        exclude_ids = body.get("exclude_ids", None)
+        if exclude_ids is not None and isinstance(exclude_ids, list):
+            exclude_ids_set = {i for i in exclude_ids if isinstance(i, int)}
+            filtered_cached = [m for m in filtered_cached if m.get("id") not in exclude_ids_set]
+            
+        sorted_cached = sort_movies(filtered_cached, sort_by)
         
         from .cache import get_and_increment_hit_count
         hit_count = get_and_increment_hit_count(cache_key)
@@ -384,12 +413,22 @@ def search(request):
     movies = response.data or []
     logger.debug("Supabase RPC returned %d results", len(movies))
     
+    # Filter out inputted movies
+    input_movie_ids = {item.get("id") for item in inputs if item.get("type") == "movie"}
+    movies = [m for m in movies if m.get("id") not in input_movie_ids]
+    
     # Store the raw similarity-ordered candidates in cache before sorting.
     # This lets future requests with a different sort_by reuse the same entry.
     set_cached_results(cache_key, movies)
     
     from .cache import reset_hit_count
     reset_hit_count(cache_key)
+
+    # Dynamically filter out explicitly excluded movie IDs
+    exclude_ids = body.get("exclude_ids", None)
+    if exclude_ids is not None and isinstance(exclude_ids, list):
+        exclude_ids_set = {i for i in exclude_ids if isinstance(i, int)}
+        movies = [m for m in movies if m.get("id") not in exclude_ids_set]
 
     # Sort and slice for the current response
     movies = sort_movies(movies, sort_by)
@@ -431,7 +470,7 @@ def recommend(request):
     movie_ids = body.get("movie_ids", None)
     exclude_ids = body.get("exclude_ids", None)
 
-    logger.debug(movie_ids)
+
 
     if not emotion or emotion not in KNOWN_EMOTIONS:
         return JsonResponse(
@@ -558,11 +597,8 @@ def generate_pixel_sprite(request):
         original_img = ImageOps.fit(original_img, (min_dim, min_dim))
 
         
-        # STEP 2: Remove Background
-        if remover:
-            img_no_bg = remover.process(original_img)
-        else:
-            img_no_bg = original_img.convert("RGBA")
+        # STEP 2: Remove Background (Simple Color-based)
+        img_no_bg = remove_background_simple(original_img)
             
         # STEP 3: Downscale to 18x18
         small_img = img_no_bg.resize((18, 18), resample=Image.NEAREST)
@@ -580,7 +616,7 @@ def generate_pixel_sprite(request):
 
         buffer = io.BytesIO()
         final_img.save(buffer, format="PNG")
-        import base64
+
         img_b64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
         
         try:

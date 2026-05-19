@@ -100,14 +100,30 @@ frontend/
 │   │   │   ├── search.component.ts   # API calls + watchlist toggling
 │   │   │   ├── search.component.html
 │   │   │   └── search.component.css
+│   │   ├── graph/                    # Interactive node graph for discovery
+│   │   │   ├── graph.component.ts
+│   │   │   ├── graph.component.html
+│   │   │   └── graph.component.css
 │   │   ├── watchlist/                # Watchlist page (auth-guarded)
 │   │   │   ├── watchlist.component.ts
 │   │   │   ├── watchlist.component.html
 │   │   │   └── watchlist.component.css
-│   │   ├── account/                  # Login / register / profile
+│   │   ├── account/                  # Profile / settings
 │   │   │   ├── account.component.ts
 │   │   │   ├── account.component.html
 │   │   │   └── account.component.css
+│   │   ├── login/                    # Login / register page
+│   │   │   ├── login.component.ts
+│   │   │   ├── login.component.html
+│   │   │   └── login.component.css
+│   │   ├── info/                     # Graph instruction modal
+│   │   │   ├── info.component.ts
+│   │   │   ├── info.component.html
+│   │   │   └── info.component.css
+│   │   ├── settings/                 # App settings (e.g., dark/light mode)
+│   │   │   ├── settings.component.ts
+│   │   │   ├── settings.component.html
+│   │   │   └── settings.component.css
 │   │   ├── navbar/                   # Global navigation bar
 │   │   │   ├── navbar.component.ts
 │   │   │   ├── navbar.component.html
@@ -126,7 +142,6 @@ frontend/
 │   │   ├── environment.prod.ts       # Prod environment
 │   │   └── environment.template.ts   # Template environment
 │   ├── main.ts                       # Browser bootstrap
-│   ├── appwrite.ts                   # AppWrite client initialisation
 │   ├── styles.css                    # Global stylesheet
 │   └── index.html                    # Main HTML shell
 ├── public/                           # Static assets (favicon, etc.)
@@ -206,7 +221,11 @@ npm run ng -- generate service services/my-service
 | Path | Component | Guard |
 |------|-----------|-------|
 | `/` | `SearchComponent` | None |
-| `/account` | `AccountComponent` | None |
+| `/graph` | `GraphComponent` | None |
+| `/classic` | `SearchComponent` | None |
+| `/login` | `LoginComponent` | None |
+| `/account` | `AccountComponent` | `authGuard` |
+| `/settings` | `SettingsComponent` | `authGuard` |
 | `/watchlist` | `WatchlistComponent` | `authGuard` |
 | `/**` | Redirects to `/` | - |
 

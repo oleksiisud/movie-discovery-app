@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { GraphComponent } from './search/graph.component';
+import { GraphComponent } from './graph/graph.component';
 import { authGuard } from './core/auth.guard';
 import { SearchComponent } from './search/search.component';
 
